@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-size: 16px;
+    letter-spacing: normal;
+  }
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased text-base;
+    font-family: 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.5);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.8);
+}
+
+/* 3D Flip Card animations */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Hide scrollbar for clean horizontal tabs */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Print styles for exporting clean PDF / printing offline */
+@media print {
+  /* Hide navigation, sidebar, header and UI buttons */
+  header,
+  aside,
+  .no-print,
+  button,
+  input,
+  select {
+    display: none !important;
+  }
+
+  /* Reset background and text for paper/PDF */
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+  }
+
+  .md\:ml-72, .md\:ml-20, .md\:ml-64 {
+    margin-left: 0 !important;
+  }
+
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Remove heavy dark mode or gradients in print */
+  .dark {
+    color-scheme: light !important;
+  }
+
+  .bg-white, .bg-slate-50, .bg-slate-900 {
+    background-color: transparent !important;
+  }
+
+  .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl {
+    box-shadow: none !important;
+  }
+
+  .border {
+    border-color: #cbd5e1 !important;
+  }
+
+  /* Avoid breaking inside question cards or paragraphs */
+  .break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
