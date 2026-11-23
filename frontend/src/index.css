@@ -5,15 +5,32 @@
 @layer base {
   html {
     font-size: 16px;
-    letter-spacing: normal;
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
   }
+
   body {
-    @apply bg-slate-50 text-slate-900 font-sans antialiased text-base;
-    font-family: 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+    @apply bg-[#F6F8FB] dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 font-sans antialiased;
+    overflow-x: hidden;
   }
 }
 
-/* Custom scrollbar */
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .surface-card {
+    @apply bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800/90 shadow-soft;
+  }
+  .glass-bar {
+    @apply bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border-slate-200/80 dark:border-slate-800/80;
+  }
+}
+
+/* Custom sleek scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -24,32 +41,15 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.5);
+  background: rgba(148, 163, 184, 0.45);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.8);
+  background: rgba(100, 116, 139, 0.75);
 }
 
-/* 3D Flip Card animations */
-.perspective-1000 {
-  perspective: 1000px;
-}
-
-.transform-style-3d {
-  transform-style: preserve-3d;
-}
-
-.backface-hidden {
-  backface-visibility: hidden;
-}
-
-.rotate-y-180 {
-  transform: rotateY(180deg);
-}
-
-/* Hide scrollbar for clean horizontal tabs */
+/* Hide scrollbar for horizontal chips/tabs on mobile */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -58,11 +58,17 @@
   scrollbar-width: none;
 }
 
+/* Subtle dot pattern for hero sections */
+.bg-dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
 /* Print styles for exporting clean PDF / printing offline */
 @media print {
-  /* Hide navigation, sidebar, header and UI buttons */
   header,
   aside,
+  nav,
   .no-print,
   button,
   input,
@@ -70,16 +76,11 @@
     display: none !important;
   }
 
-  /* Reset background and text for paper/PDF */
   body {
     background: #ffffff !important;
     color: #0f172a !important;
     font-size: 11pt !important;
     line-height: 1.5 !important;
-  }
-
-  .md\:ml-72, .md\:ml-20, .md\:ml-64 {
-    margin-left: 0 !important;
   }
 
   main {
@@ -88,24 +89,20 @@
     margin: 0 !important;
   }
 
-  /* Remove heavy dark mode or gradients in print */
   .dark {
     color-scheme: light !important;
   }
 
-  .bg-white, .bg-slate-50, .bg-slate-900 {
-    background-color: transparent !important;
-  }
-
-  .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl {
+  .shadow-soft,
+  .shadow-elevated,
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg,
+  .shadow-xl,
+  .shadow-2xl {
     box-shadow: none !important;
   }
 
-  .border {
-    border-color: #cbd5e1 !important;
-  }
-
-  /* Avoid breaking inside question cards or paragraphs */
   .break-inside-avoid {
     break-inside: avoid;
     page-break-inside: avoid;

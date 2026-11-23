@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { CheckCircle2, AlertCircle, Info, X, Copy } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 export interface ToastItem {
   id: string;
   message: string;
   subMessage?: string;
+  hint?: string;
   type?: 'success' | 'error' | 'info';
   duration?: number;
 }
@@ -29,7 +30,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const duration = toast.duration ?? 3500;
       const newToast: ToastItem = { ...toast, id };
 
-      setToasts((prev) => [...prev, newToast]);
+      setToasts((prev) => [...prev.slice(-2), newToast]);
 
       if (duration > 0) {
         setTimeout(() => {
@@ -61,9 +62,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         showToast({
           type: 'success',
-          message: 'Đã sao chép liên kết chia sẻ vào bộ nhớ tạm!',
-          subMessage: subMessage || (title ? `${title}` : undefined),
-          duration: 3000,
+          message: title || 'Đã sao chép liên kết chia sẻ!',
+          subMessage: subMessage || fullUrl,
+          hint: 'Dán và gửi ngay cho học sinh',
+          duration: 3200,
         });
 
         return true;
@@ -73,7 +75,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           type: 'error',
           message: 'Không thể tự động sao chép liên kết.',
           subMessage: 'Trình duyệt không cho phép truy cập bộ nhớ tạm.',
-          duration: 3000,
+          duration: 3200,
         });
         return false;
       }
@@ -85,17 +87,18 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <ToastContext.Provider value={{ showToast, copyAndNotify }}>
       {children}
 
-      {/* Floating Toasts Viewport Container (Centered on mobile, right-aligned on desktop) */}
-      <div className="fixed top-5 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-6 z-[100] flex flex-col gap-2.5 max-w-[92vw] sm:max-w-md w-full pointer-events-none">
+      {/* Floating Toasts Container — responsive positioning above mobile bottom nav */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-5 z-[100] flex flex-col gap-2.5 w-[calc(100%-2rem)] sm:max-w-sm pointer-events-none pt-safe">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-start gap-3 p-3.5 sm:p-4 rounded-2xl shadow-2xl border backdrop-blur-md transition-all duration-300 animate-in slide-in-from-top-3 fade-in ${
+            role="status"
+            className={`pointer-events-auto flex items-start gap-3 p-3.5 rounded-2xl shadow-elevated border backdrop-blur-xl animate-slide-up ${
               toast.type === 'error'
-                ? 'bg-rose-50/95 dark:bg-rose-950/90 border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-100'
+                ? 'bg-rose-50/95 dark:bg-rose-950/95 border-rose-200 dark:border-rose-800/80 text-rose-950 dark:text-rose-100'
                 : toast.type === 'info'
-                ? 'bg-blue-50/95 dark:bg-blue-950/90 border-blue-200 dark:border-blue-900 text-blue-900 dark:text-blue-100'
-                : 'bg-emerald-50/95 dark:bg-emerald-950/90 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100'
+                ? 'bg-blue-50/95 dark:bg-blue-950/95 border-blue-200 dark:border-blue-800/80 text-blue-950 dark:text-blue-100'
+                : 'bg-emerald-50/95 dark:bg-emerald-950/95 border-emerald-200 dark:border-emerald-800/80 text-emerald-950 dark:text-emerald-100'
             }`}
           >
             <div className="shrink-0 mt-0.5">
@@ -109,20 +112,23 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             </div>
 
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm font-bold leading-tight">{toast.message}</p>
+              <p className="text-sm font-bold leading-snug">{toast.message}</p>
               {toast.subMessage && (
-                <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 mt-1 line-clamp-1 leading-relaxed">
+                <p className="text-xs opacity-80 mt-0.5 line-clamp-2 leading-relaxed break-words">
                   {toast.subMessage}
                 </p>
               )}
-              <span className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80 mt-1 block font-medium">
-                Nhấn Ctrl + V để dán và gửi ngay
-              </span>
+              {toast.hint && (
+                <span className="text-[11px] opacity-70 mt-1 block font-semibold">
+                  {toast.hint}
+                </span>
+              )}
             </div>
 
             <button
               onClick={() => removeToast(toast.id)}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition shrink-0"
+              aria-label="Đóng thông báo"
+              className="p-1 rounded-lg opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0"
             >
               <X className="w-4 h-4" />
             </button>

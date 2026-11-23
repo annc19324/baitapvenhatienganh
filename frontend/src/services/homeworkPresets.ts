@@ -1,4 +1,4 @@
-import { HomeworkTemplate } from '../../types/homework';
+import { HomeworkTemplate } from '../types/homework';
 
 export const PRESET_TEMPLATES: HomeworkTemplate[] = [
   {

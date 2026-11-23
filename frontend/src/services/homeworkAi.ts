@@ -1,4 +1,4 @@
-import { HomeworkQuestion, HomeworkQuestionType, EssayAiEvaluation } from '../../types/homework';
+import { HomeworkQuestion, HomeworkQuestionType, EssayAiEvaluation } from '../types/homework';
 import axios from 'axios';
 
 interface GenerateOptions {

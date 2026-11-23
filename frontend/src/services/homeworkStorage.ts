@@ -1,4 +1,4 @@
-import { HomeworkAssignment, HomeworkSubmission, HomeworkTemplate } from '../../types/homework';
+import { HomeworkAssignment, HomeworkSubmission } from '../types/homework';
 import { PRESET_TEMPLATES } from './homeworkPresets';
 
 const ASSIGNMENTS_KEY = 'smartdoc_homework_assignments_v1';
