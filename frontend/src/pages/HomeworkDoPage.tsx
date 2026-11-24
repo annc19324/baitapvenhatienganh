@@ -13,12 +13,16 @@ import {
   BookOpenText,
   ChevronDown,
   ChevronUp,
+  Lock,
 } from 'lucide-react';
 import { HomeworkStorageService } from '../services/homeworkStorage';
 import { HomeworkAiService } from '../services/homeworkAi';
 import { HomeworkAssignment, HomeworkQuestion, HomeworkSubmission } from '../types/homework';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { QuestionTypeBadge } from '../components/QuestionTypeBadge';
+import { EducationLevelBadge } from '../components/EducationLevelBadge';
+import { TheoryModal } from '../components/TheoryModal';
 
 const isQuestionAnswered = (q: HomeworkQuestion, ans: any): boolean => {
   if (ans === undefined || ans === null || ans === '') return false;
@@ -37,11 +41,13 @@ const isQuestionAnswered = (q: HomeworkQuestion, ans: any): boolean => {
 export const HomeworkDoPage: React.FC = () => {
   const { codeOrId } = useParams<{ codeOrId: string }>();
   const navigate = useNavigate();
+  const { studentName: savedName, saveStudentName } = useAuth();
   const { showToast } = useToast();
 
   const [assignment, setAssignment] = useState<HomeworkAssignment | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
-  const [studentName, setStudentName] = useState('');
+  const [studentName, setStudentName] = useState(savedName);
+  const [showTheory, setShowTheory] = useState(false);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -71,16 +77,22 @@ export const HomeworkDoPage: React.FC = () => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.studentName) {
+        if (parsed.studentName && !savedName) {
           setStudentName(parsed.studentName);
-          setAnswers(parsed.answers || {});
-          setWordReorderIndices(parsed.wordReorderIndices || {});
         }
+        setAnswers(parsed.answers || {});
+        setWordReorderIndices(parsed.wordReorderIndices || {});
       } catch {
         // ignore
       }
     }
   }, [codeOrId]);
+
+  useEffect(() => {
+    if (savedName && !studentName) {
+      setStudentName(savedName);
+    }
+  }, [savedName]);
 
   useEffect(() => {
     if (!hasStarted || timeLeftSeconds === null) return;
@@ -110,9 +122,12 @@ export const HomeworkDoPage: React.FC = () => {
   const handleStartTest = (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentName.trim()) {
-      showToast({ message: 'Vui lòng nhập họ và tên', type: 'error' });
+      showToast({ message: 'Vui lòng nhập tên của bạn', type: 'error' });
       return;
     }
+    // Persist student name for future sessions
+    saveStudentName(studentName.trim());
+
     setHasStarted(true);
     setStartTime(Date.now());
     if (assignment && assignment.timeLimitMinutes > 0) {
@@ -248,18 +263,47 @@ export const HomeworkDoPage: React.FC = () => {
     );
   }
 
-  // ================= STEP 1: SIMPLE WELCOME SCREEN =================
+  if (assignment.status === 'CLOSED') {
+    return (
+      <div className="max-w-md mx-auto py-12 text-center">
+        <div className="surface-card rounded-3xl p-8 space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center mx-auto">
+            <Lock className="w-7 h-7" />
+          </div>
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Bài tập đang tạm khóa</h1>
+          <p className="text-sm text-slate-500">
+            Admin đã đóng nhận bài cho <strong>{assignment.title}</strong>.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/homework')}
+            className="w-full py-3 rounded-2xl bg-blue-600 text-white font-bold text-sm"
+          >
+            Về Trang Chủ
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ================= STEP 1: WELCOME SCREEN (SAVED NAME) =================
   if (!hasStarted) {
     return (
-      <div className="max-w-md mx-auto py-6 sm:py-12 animate-slide-up">
-        <div className="surface-card rounded-3xl p-6 sm:p-8 shadow-elevated space-y-6">
+      <div className="max-w-md mx-auto py-4 sm:py-10 animate-slide-up">
+        <div className="surface-card rounded-3xl p-6 sm:p-8 shadow-elevated space-y-5">
           <div className="text-center space-y-2">
-            <span className="inline-block px-3 py-1 bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-mono font-extrabold text-xs rounded-full border border-blue-200 dark:border-blue-800">
-              {assignment.code}
-            </span>
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <span className="px-3 py-0.5 bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-mono font-extrabold text-xs rounded-full border border-blue-200 dark:border-blue-800">
+                {assignment.code}
+              </span>
+              <EducationLevelBadge levelId={assignment.levelId} />
+            </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white leading-snug">
               {assignment.title}
             </h1>
+            {assignment.description && (
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">{assignment.description}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/70 p-3.5 rounded-2xl text-center border border-slate-100 dark:border-slate-800">
@@ -279,18 +323,35 @@ export const HomeworkDoPage: React.FC = () => {
             </div>
           </div>
 
+          {assignment.theory && (
+            <button
+              type="button"
+              onClick={() => setShowTheory(true)}
+              className="w-full py-3 px-4 rounded-2xl bg-blue-50/80 dark:bg-blue-950/50 border border-blue-200/80 dark:border-blue-800/70 text-blue-700 dark:text-blue-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-blue-100/70 dark:hover:bg-blue-900/50 transition"
+            >
+              <BookOpenText className="w-4 h-4" />
+              <span>Ôn nhanh Lý Thuyết trước khi làm</span>
+            </button>
+          )}
+
           <form onSubmit={handleStartTest} className="space-y-4">
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                <User className="w-3.5 h-3.5 text-blue-600" />
-                <span>Họ và tên học sinh</span>
-                <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <User className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Tên người làm bài</span>
+                  <span className="text-rose-500">*</span>
+                </label>
+                {savedName && (
+                  <span className="text-[11px] font-semibold text-teal-600 dark:text-teal-400">
+                    ✓ Đã tự lưu tên
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 required
-                autoFocus
-                placeholder="Nhập họ và tên của bạn..."
+                placeholder="Nhập tên của bạn (tự lưu cho lần sau)..."
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
                 className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-base font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -306,6 +367,11 @@ export const HomeworkDoPage: React.FC = () => {
             </button>
           </form>
         </div>
+
+        <TheoryModal
+          assignment={showTheory ? assignment : null}
+          onClose={() => setShowTheory(false)}
+        />
       </div>
     );
   }
@@ -428,7 +494,6 @@ export const HomeworkDoPage: React.FC = () => {
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Question Card */}
         <div className="lg:col-span-8">
           <div className="surface-card rounded-3xl p-5 sm:p-7 space-y-5">
             <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -800,7 +865,7 @@ export const HomeworkDoPage: React.FC = () => {
         </aside>
       </div>
 
-      {/* Mobile / Tablet Bottom Navigation Bar */}
+      {/* Mobile / Tablet Bottom Bar */}
       <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 glass-bar border-t px-4 py-2.5 pb-safe">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
           <button

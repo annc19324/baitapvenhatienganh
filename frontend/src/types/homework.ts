@@ -9,6 +9,26 @@ export type HomeworkQuestionType =
   | 'READING_COMPREHENSION'
   | 'PRONUNCIATION';
 
+export type EducationLevelId =
+  | 'MAM_NON'
+  | 'TIEU_HOC'
+  | 'THCS'
+  | 'THPT'
+  | 'DAI_HOC';
+
+export interface TheorySection {
+  heading: string;
+  formula?: string;
+  points: string[];
+  examples?: Array<{ en: string; vi: string }>;
+  tip?: string;
+}
+
+export interface TheoryLesson {
+  summary: string;
+  sections: TheorySection[];
+}
+
 export interface MatchingPair {
   left: string;
   right: string;
@@ -47,8 +67,8 @@ export interface HomeworkQuestion {
   correctOptionIndices?: number[];
 
   // FILL_BLANK
-  sentenceWithBlanks?: string; // e.g. "She [has lived] here for [ten] years."
-  acceptedAnswers?: string[]; // list of answers for single or comma separated
+  sentenceWithBlanks?: string;
+  acceptedAnswers?: string[];
   blanks?: Array<{ index: number; acceptedAnswers: string[] }>;
 
   // ESSAY
@@ -61,7 +81,7 @@ export interface HomeworkQuestion {
   pairs?: MatchingPair[];
 
   // WORD_REORDER
-  words?: string[]; // shuffled words
+  words?: string[];
   correctSentence?: string;
 
   // ERROR_CORRECTION
@@ -77,15 +97,17 @@ export interface HomeworkQuestion {
 
 export interface HomeworkAssignment {
   id: string;
-  code: string; // PIN code, e.g. ENG-4819
+  code: string;
   title: string;
   description: string;
-  subject: string; // "Tiếng Anh"
-  topic: string; // "12 Thì trong tiếng Anh", "Câu bị động", etc.
-  gradeLevel: string; // "Lớp 6-9 (A2)", "Lớp 10-12 (B1)", "IELTS / THPTQG", etc.
+  subject: string;
+  topic: string;
+  levelId?: EducationLevelId;
+  orderIndex?: number;
+  gradeLevel: string;
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
-  timeLimitMinutes: number; // 0 = unlimited
-  deadline?: string; // ISO date string
+  timeLimitMinutes: number;
+  deadline?: string;
   password?: string;
   shuffleQuestions: boolean;
   showResultsImmediately: boolean;
@@ -95,6 +117,7 @@ export interface HomeworkAssignment {
   createdAt: string;
   updatedAt: string;
   status: 'ACTIVE' | 'CLOSED' | 'DRAFT';
+  theory?: TheoryLesson;
   questions: HomeworkQuestion[];
   totalPoints: number;
 }
@@ -118,8 +141,8 @@ export interface HomeworkSubmission {
   studentName: string;
   studentEmail?: string;
   studentClass?: string;
-  answers: Record<string, any>; // questionId -> answer
-  scores: Record<string, number>; // questionId -> earned score
+  answers: Record<string, any>;
+  scores: Record<string, number>;
   aiEvaluations?: Record<string, EssayAiEvaluation>;
   teacherAdjustments?: Record<string, { score: number; comment?: string }>;
   totalScore: number;
@@ -132,6 +155,9 @@ export interface HomeworkSubmission {
 
 export interface HomeworkTemplate {
   id: string;
+  code: string;
+  levelId: EducationLevelId;
+  orderIndex: number;
   title: string;
   description: string;
   topic: string;
@@ -140,5 +166,6 @@ export interface HomeworkTemplate {
   timeLimitMinutes: number;
   questionCount: number;
   tags: string[];
+  theory: TheoryLesson;
   questions: HomeworkQuestion[];
 }

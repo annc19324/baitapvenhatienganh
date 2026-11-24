@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Plus, Trash2, ArrowLeft, Save, BookOpen, ShieldCheck } from 'lucide-react';
 import {
-  Plus,
-  Trash2,
-  ArrowLeft,
-  Save,
-  BookOpen,
-} from 'lucide-react';
-import { HomeworkQuestion, HomeworkQuestionType, HomeworkAssignment } from '../types/homework';
+  HomeworkQuestion,
+  HomeworkQuestionType,
+  HomeworkAssignment,
+  EducationLevelId,
+} from '../types/homework';
 import { HomeworkStorageService, generatePinCode } from '../services/homeworkStorage';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { QUESTION_TYPE_META, QuestionTypeBadge } from '../components/QuestionTypeBadge';
+import { EDUCATION_LEVELS, EDUCATION_LEVEL_MAP } from '../components/EducationLevelBadge';
 
 const CREATABLE_TYPES: HomeworkQuestionType[] = [
   'MULTIPLE_CHOICE',
@@ -24,12 +25,41 @@ const CREATABLE_TYPES: HomeworkQuestionType[] = [
 
 export const HomeworkCreatePage: React.FC = () => {
   const navigate = useNavigate();
+  const { isAdmin, adminUsername } = useAuth();
   const { showToast } = useToast();
 
   const [title, setTitle] = useState('');
+  const [levelId, setLevelId] = useState<EducationLevelId>('THCS');
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(15);
+  const [theorySummary, setTheorySummary] = useState('');
+  const [theoryFormula, setTheoryFormula] = useState('');
   const [code] = useState(() => generatePinCode());
   const [questions, setQuestions] = useState<HomeworkQuestion[]>([]);
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-md mx-auto py-12 text-center animate-slide-up">
+        <div className="surface-card rounded-3xl p-8 space-y-4 shadow-elevated">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto">
+            <ShieldCheck className="w-7 h-7" />
+          </div>
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
+            Chỉ dành cho Quản trị viên (Admin)
+          </h1>
+          <p className="text-sm text-slate-500">
+            Vui lòng đăng nhập tài khoản Admin để tạo và chỉnh sửa bài tập mới.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/admin')}
+            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm rounded-2xl shadow-glow-blue"
+          >
+            Đăng Nhập Admin
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const totalPoints = questions.reduce((sum, q) => sum + (q.points || 1), 0);
 
@@ -95,7 +125,7 @@ export const HomeworkCreatePage: React.FC = () => {
 
   const handleSave = () => {
     if (!title.trim()) {
-      showToast({ message: 'Vui lòng nhập tiêu đề bài tập', type: 'error' });
+      showToast({ message: 'Vui lòng nhập tên bài tập', type: 'error' });
       return;
     }
     if (questions.length === 0) {
@@ -103,46 +133,70 @@ export const HomeworkCreatePage: React.FC = () => {
       return;
     }
 
+    const levelMeta = EDUCATION_LEVEL_MAP[levelId];
+    const hasTheory = theorySummary.trim() || theoryFormula.trim();
+
     const assignment: HomeworkAssignment = {
       id: `hw-${Date.now()}`,
       code,
       title: title.trim(),
-      description: '',
+      description: theorySummary.trim(),
       subject: 'Tiếng Anh',
       topic: title.trim(),
-      gradeLevel: 'Tiếng Anh',
-      difficulty: 'MEDIUM',
+      levelId,
+      gradeLevel: `${levelMeta.label} (${levelMeta.cefr})`,
+      difficulty:
+        levelId === 'MAM_NON' || levelId === 'TIEU_HOC'
+          ? 'EASY'
+          : levelId === 'DAI_HOC'
+          ? 'HARD'
+          : 'MEDIUM',
       timeLimitMinutes: Math.max(0, Number(timeLimitMinutes) || 0),
       shuffleQuestions: false,
       showResultsImmediately: true,
       allowRetake: true,
-      createdByName: 'Giáo viên',
+      createdByName: adminUsername || 'Admin',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status: 'ACTIVE',
+      theory: hasTheory
+        ? {
+            summary: theorySummary.trim() || 'Tóm tắt kiến thức trọng tâm của bài học.',
+            sections: [
+              {
+                heading: 'Kiến thức cốt lõi',
+                formula: theoryFormula.trim() || undefined,
+                points: theorySummary
+                  .split('\n')
+                  .map((l) => l.trim())
+                  .filter(Boolean),
+              },
+            ],
+          }
+        : undefined,
       questions,
       totalPoints,
     };
 
     HomeworkStorageService.saveAssignment(assignment);
     showToast({
-      message: 'Đã lưu bài tập thành công!',
-      subMessage: `Mã PIN để học sinh làm bài: ${assignment.code}`,
+      message: 'Đã lưu bài tập mới!',
+      subMessage: `Mã PIN: ${assignment.code}`,
       type: 'success',
     });
-    navigate('/homework');
+    navigate('/admin');
   };
 
   return (
     <div className="space-y-6 pb-20 sm:pb-8 animate-fade-in">
-      {/* ================= HEADER ================= */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-3 pb-4 border-b border-slate-200/80 dark:border-slate-800">
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
-            onClick={() => navigate('/homework')}
+            onClick={() => navigate('/admin')}
             aria-label="Quay lại"
-            className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
+            className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -151,7 +205,8 @@ export const HomeworkCreatePage: React.FC = () => {
               Tạo Bài Tập Mới
             </h1>
             <p className="text-xs text-slate-500">
-              Mã PIN: <strong className="font-mono text-blue-600 dark:text-blue-400">{code}</strong> • {questions.length} câu ({totalPoints}đ)
+              Mã PIN: <strong className="font-mono text-blue-600 dark:text-blue-400">{code}</strong> •{' '}
+              {questions.length} câu ({totalPoints}đ)
             </p>
           </div>
         </div>
@@ -166,37 +221,83 @@ export const HomeworkCreatePage: React.FC = () => {
         </button>
       </div>
 
-      {/* ================= BASIC INFO ================= */}
-      <section className="surface-card rounded-2xl p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-12 gap-3.5">
-        <div className="sm:col-span-8">
-          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-            Tên bài tập <span className="text-rose-500">*</span>
-          </label>
-          <input
-            type="text"
-            placeholder="VD: Bài tập Thì Hiện Tại Đơn - Lớp 8"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+      {/* Basic Info & Optional Theory */}
+      <section className="surface-card rounded-2xl p-4 sm:p-5 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
+          <div className="sm:col-span-6">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Tên bài tập <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="VD: Bài tập Thì Hiện Tại Đơn"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Trình độ
+            </label>
+            <select
+              value={levelId}
+              onChange={(e) => setLevelId(e.target.value as EducationLevelId)}
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {EDUCATION_LEVELS.map((lvl) => (
+                <option key={lvl.id} value={lvl.id}>
+                  {lvl.emoji} {lvl.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Thời gian (phút)
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="180"
+              value={timeLimitMinutes}
+              onChange={(e) => setTimeLimitMinutes(Number(e.target.value))}
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
-        <div className="sm:col-span-4">
-          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-            Thời gian (phút, 0 = tự do)
-          </label>
-          <input
-            type="number"
-            min="0"
-            max="180"
-            value={timeLimitMinutes}
-            onChange={(e) => setTimeLimitMinutes(Number(e.target.value))}
-            className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">
+              Công thức / Quy tắc ngắn (tùy chọn)
+            </label>
+            <input
+              type="text"
+              placeholder="VD: S + V(s/es) | S + do/does + not + V"
+              value={theoryFormula}
+              onChange={(e) => setTheoryFormula(e.target.value)}
+              className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-xs font-semibold"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">
+              Tóm tắt lý thuyết ngắn gọn (tùy chọn)
+            </label>
+            <input
+              type="text"
+              placeholder="Ghi chú ngắn giúp học sinh ôn nhanh trước khi làm..."
+              value={theorySummary}
+              onChange={(e) => setTheorySummary(e.target.value)}
+              className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs"
+            />
+          </div>
         </div>
       </section>
 
-      {/* ================= ADD QUESTION BY TYPE ================= */}
+      {/* Add Question by Type */}
       <section className="surface-card rounded-2xl p-4 sm:p-5 space-y-3">
         <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
           Chọn dạng bài để thêm câu hỏi
@@ -210,7 +311,7 @@ export const HomeworkCreatePage: React.FC = () => {
                 key={typeKey}
                 type="button"
                 onClick={() => handleAddQuestion(typeKey)}
-                className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 text-center transition active:scale-95 hover:shadow-sm ${meta.badgeClass}`}
+                className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 text-center transition active:scale-95 ${meta.badgeClass}`}
               >
                 <Icon className="w-4 h-4" />
                 <span>{meta.shortLabel}</span>
@@ -220,22 +321,17 @@ export const HomeworkCreatePage: React.FC = () => {
         </div>
       </section>
 
-      {/* ================= QUESTIONS LIST ================= */}
+      {/* Questions List */}
       <section className="space-y-3.5">
         {questions.length === 0 ? (
           <div className="surface-card rounded-3xl border-dashed py-12 px-6 text-center space-y-2">
             <BookOpen className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto" />
-            <h3 className="text-sm font-extrabold text-slate-700 dark:text-slate-200">
-              Chưa có câu hỏi nào
-            </h3>
-            <p className="text-xs text-slate-500">
-              Chọn một dạng bài ở khung phía trên để bắt đầu thêm câu hỏi.
-            </p>
+            <h3 className="text-sm font-extrabold text-slate-700 dark:text-slate-200">Chưa có câu hỏi nào</h3>
+            <p className="text-xs text-slate-500">Chọn một dạng bài ở khung phía trên để thêm câu hỏi.</p>
           </div>
         ) : (
           questions.map((q, idx) => (
             <div key={q.id} className="surface-card rounded-2xl p-4 sm:p-5 space-y-4">
-              {/* Card Header */}
               <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <span className="w-7 h-7 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-extrabold text-xs flex items-center justify-center shrink-0">
@@ -259,86 +355,75 @@ export const HomeworkCreatePage: React.FC = () => {
                       className="w-14 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-center text-slate-900 dark:text-white"
                     />
                   </label>
-
                   <button
                     type="button"
                     onClick={() => handleDeleteQuestion(idx)}
-                    aria-label="Xóa câu hỏi"
-                    className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition"
+                    className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Question Prompt */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Nội dung câu hỏi</label>
                 <textarea
                   rows={2}
-                  placeholder="Nhập đề câu hỏi..."
                   value={q.prompt}
                   onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, prompt: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold"
                 />
               </div>
 
-              {/* MULTIPLE_CHOICE & PRONUNCIATION */}
               {(q.type === 'MULTIPLE_CHOICE' || q.type === 'PRONUNCIATION') && q.options && (
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-slate-500">
-                    Các lựa chọn (bấm A/B/C/D để chọn đáp án đúng)
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {q.options.map((opt, oIdx) => {
-                      const isCorrect = q.correctOptionIndex === oIdx;
-                      return (
-                        <div
-                          key={oIdx}
-                          className={`flex items-center gap-2 p-2.5 rounded-xl border ${
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {q.options.map((opt, oIdx) => {
+                    const isCorrect = q.correctOptionIndex === oIdx;
+                    return (
+                      <div
+                        key={oIdx}
+                        className={`flex items-center gap-2 p-2.5 rounded-xl border ${
+                          isCorrect
+                            ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-400'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateQuestion(idx, (cur) => ({ ...cur, correctOptionIndex: oIdx }))
+                          }
+                          className={`w-7 h-7 rounded-lg font-extrabold text-xs flex items-center justify-center shrink-0 ${
                             isCorrect
-                              ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-400'
-                              : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
                           }`}
                         >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateQuestion(idx, (cur) => ({ ...cur, correctOptionIndex: oIdx }))
-                            }
-                            className={`w-7 h-7 rounded-lg font-extrabold text-xs flex items-center justify-center shrink-0 ${
-                              isCorrect
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
-                            }`}
-                          >
-                            {String.fromCharCode(65 + oIdx)}
-                          </button>
-                          <input
-                            type="text"
-                            placeholder={`Đáp án ${String.fromCharCode(65 + oIdx)}`}
-                            value={opt}
-                            onChange={(e) =>
-                              updateQuestion(idx, (cur) => {
-                                const opts = [...(cur.options || [])];
-                                opts[oIdx] = e.target.value;
-                                return { ...cur, options: opts };
-                              })
-                            }
-                            className="w-full bg-transparent text-base sm:text-xs font-semibold focus:outline-none"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
+                          {String.fromCharCode(65 + oIdx)}
+                        </button>
+                        <input
+                          type="text"
+                          placeholder={`Đáp án ${String.fromCharCode(65 + oIdx)}`}
+                          value={opt}
+                          onChange={(e) =>
+                            updateQuestion(idx, (cur) => {
+                              const opts = [...(cur.options || [])];
+                              opts[oIdx] = e.target.value;
+                              return { ...cur, options: opts };
+                            })
+                          }
+                          className="w-full bg-transparent text-base sm:text-xs font-semibold focus:outline-none"
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* FILL_BLANK */}
               {q.type === 'FILL_BLANK' && (
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-500">
-                    Câu có từ cần điền đặt trong ngoặc vuông <code className="font-mono">[từ_đúng]</code>
+                    Đặt từ đúng trong ngoặc vuông <code className="font-mono">[từ_đúng]</code>
                   </label>
                   <input
                     type="text"
@@ -356,20 +441,13 @@ export const HomeworkCreatePage: React.FC = () => {
                     }}
                     className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-sm sm:text-xs font-semibold"
                   />
-                  <p className="text-xs text-slate-500">
-                    Đáp án đúng:{' '}
-                    <strong className="text-emerald-600 dark:text-emerald-400">
-                      {(q.acceptedAnswers || []).join(', ') || 'Chưa đặt trong [ ]'}
-                    </strong>
-                  </p>
                 </div>
               )}
 
-              {/* WORD_REORDER */}
               {q.type === 'WORD_REORDER' && (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-500">
-                    Câu hoàn chỉnh đúng ngữ pháp (hệ thống tự tách và xáo trộn từ)
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">
+                    Câu đúng hoàn chỉnh (tự xáo trộn từ)
                   </label>
                   <input
                     type="text"
@@ -389,7 +467,6 @@ export const HomeworkCreatePage: React.FC = () => {
                 </div>
               )}
 
-              {/* MATCHING */}
               {q.type === 'MATCHING' && q.pairs && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -407,7 +484,6 @@ export const HomeworkCreatePage: React.FC = () => {
                       <Plus className="w-3.5 h-3.5" /> Thêm cặp
                     </button>
                   </div>
-
                   {q.pairs.map((pair, pIdx) => (
                     <div key={pIdx} className="flex flex-col sm:flex-row gap-2">
                       <input
@@ -425,7 +501,7 @@ export const HomeworkCreatePage: React.FC = () => {
                       />
                       <input
                         type="text"
-                        placeholder="Vế phải tương ứng..."
+                        placeholder="Vế phải..."
                         value={pair.right}
                         onChange={(e) =>
                           updateQuestion(idx, (cur) => {
@@ -436,129 +512,69 @@ export const HomeworkCreatePage: React.FC = () => {
                         }
                         className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs font-semibold"
                       />
-                      {q.pairs && q.pairs.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateQuestion(idx, (cur) => ({
-                              ...cur,
-                              pairs: (cur.pairs || []).filter((_, i) => i !== pIdx),
-                            }))
-                          }
-                          className="p-2 text-slate-400 hover:text-rose-500 self-end sm:self-center"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* ERROR_CORRECTION */}
               {q.type === 'ERROR_CORRECTION' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">
-                      Câu chứa 4 vị trí (A), (B), (C), (D)
-                    </label>
+                <div className="space-y-2.5">
+                  <input
+                    type="text"
+                    value={q.sentence || ''}
+                    onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, sentence: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs font-semibold"
+                  />
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <select
+                      value={q.correctOption || 'A'}
+                      onChange={(e) =>
+                        updateQuestion(idx, (cur) => ({
+                          ...cur,
+                          correctOption: e.target.value as 'A' | 'B' | 'C' | 'D',
+                        }))
+                      }
+                      className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
+                    >
+                      <option value="A">Sai ở (A)</option>
+                      <option value="B">Sai ở (B)</option>
+                      <option value="C">Sai ở (C)</option>
+                      <option value="D">Sai ở (D)</option>
+                    </select>
                     <input
                       type="text"
-                      value={q.sentence || ''}
-                      onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, sentence: e.target.value }))}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs font-semibold"
+                      placeholder="Từ sửa đúng..."
+                      value={q.correction || ''}
+                      onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, correction: e.target.value }))}
+                      className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold"
                     />
                   </div>
-
-                  {q.errorOptions && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {q.errorOptions.map((eo, eIdx) => (
-                        <div key={eo.label} className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5">
-                          <span className="font-extrabold text-xs text-slate-500">({eo.label})</span>
-                          <input
-                            type="text"
-                            value={eo.text}
-                            onChange={(e) =>
-                              updateQuestion(idx, (cur) => {
-                                const list = [...(cur.errorOptions || [])];
-                                list[eIdx] = { ...list[eIdx], text: e.target.value };
-                                return { ...cur, errorOptions: list };
-                              })
-                            }
-                            className="w-full bg-transparent text-xs font-semibold focus:outline-none"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Vị trí sai</label>
-                      <select
-                        value={q.correctOption || 'A'}
-                        onChange={(e) =>
-                          updateQuestion(idx, (cur) => ({
-                            ...cur,
-                            correctOption: e.target.value as 'A' | 'B' | 'C' | 'D',
-                          }))
-                        }
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
-                      >
-                        <option value="A">Đáp án A</option>
-                        <option value="B">Đáp án B</option>
-                        <option value="C">Đáp án C</option>
-                        <option value="D">Đáp án D</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Từ sửa đúng</label>
-                      <input
-                        type="text"
-                        value={q.correction || ''}
-                        onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, correction: e.target.value }))}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold"
-                      />
-                    </div>
-                  </div>
                 </div>
               )}
 
-              {/* ESSAY */}
               {q.type === 'ESSAY' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">
-                    Bài viết mẫu tham khảo (tùy chọn)
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Nhập đoạn văn mẫu để học sinh tham khảo sau khi nộp..."
-                    value={q.sampleAnswer || ''}
-                    onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, sampleAnswer: e.target.value }))}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs"
-                  />
-                </div>
-              )}
-
-              {/* Short Explanation */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">
-                  Giải thích đáp án (tùy chọn)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Giải thích ngắn gọn hiển thị sau khi nộp bài..."
-                  value={q.explanation || ''}
-                  onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, explanation: e.target.value }))}
+                <textarea
+                  rows={2}
+                  placeholder="Đoạn văn mẫu tham khảo (tùy chọn)..."
+                  value={q.sampleAnswer || ''}
+                  onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, sampleAnswer: e.target.value }))}
                   className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs"
                 />
-              </div>
+              )}
+
+              <input
+                type="text"
+                placeholder="Giải thích ngắn gọn sau khi nộp bài (tùy chọn)..."
+                value={q.explanation || ''}
+                onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, explanation: e.target.value }))}
+                className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs"
+              />
             </div>
           ))
         )}
       </section>
 
-      {/* ================= MOBILE FIXED SAVE BAR (< sm) ================= */}
+      {/* Mobile Sticky Save Bar */}
       <div className="sm:hidden fixed bottom-16 inset-x-0 z-30 glass-bar border-t px-4 py-2.5">
         <button
           type="button"

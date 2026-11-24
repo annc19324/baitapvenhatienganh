@@ -1,10 +1,20 @@
 import { HomeworkAssignment, HomeworkSubmission } from '../types/homework';
 import { PRESET_TEMPLATES } from './homeworkPresets';
 
-const ASSIGNMENTS_KEY = 'smartdoc_homework_assignments_v1';
-const SUBMISSIONS_KEY = 'smartdoc_homework_submissions_v1';
+const ASSIGNMENTS_KEY = 'engwork_assignments_v2';
+const SUBMISSIONS_KEY = 'engwork_submissions_v2';
+const LEGACY_ASSIGNMENTS_KEY = 'smartdoc_homework_assignments_v1';
 
-// Generate a random PIN code like ENG-4819
+export interface StudentSummary {
+  studentName: string;
+  attemptCount: number;
+  uniqueAssignments: number;
+  averagePercentage: number;
+  highestPercentage: number;
+  latestSubmittedAt: string;
+  submissions: HomeworkSubmission[];
+}
+
 export function generatePinCode(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   let pin = '';
@@ -14,156 +24,131 @@ export function generatePinCode(): string {
   return `ENG-${pin}`;
 }
 
+function buildSeededAssignments(): HomeworkAssignment[] {
+  return PRESET_TEMPLATES.map((tpl) => {
+    const totalPoints = Number(tpl.questions.reduce((sum, q) => sum + (q.points || 1), 0).toFixed(1));
+    return {
+      id: `seed-hw-${tpl.id}`,
+      code: tpl.code,
+      title: tpl.title,
+      description: tpl.description,
+      subject: 'Tiếng Anh',
+      topic: tpl.topic,
+      levelId: tpl.levelId,
+      orderIndex: tpl.orderIndex,
+      gradeLevel: tpl.gradeLevel,
+      difficulty: tpl.difficulty,
+      timeLimitMinutes: tpl.timeLimitMinutes,
+      shuffleQuestions: false,
+      showResultsImmediately: true,
+      allowRetake: true,
+      createdByName: 'Hệ Thống A–Z',
+      createdAt: new Date(Date.now() - (20 - tpl.orderIndex) * 3600000).toISOString(),
+      updatedAt: new Date(Date.now() - (20 - tpl.orderIndex) * 3600000).toISOString(),
+      status: 'ACTIVE',
+      theory: tpl.theory,
+      questions: tpl.questions,
+      totalPoints,
+    };
+  });
+}
+
 export class HomeworkStorageService {
-  /**
-   * Initializes storage with preset templates if empty
-   */
   static initializeIfEmpty(): void {
     const existing = localStorage.getItem(ASSIGNMENTS_KEY);
-    if (!existing || JSON.parse(existing).length === 0) {
-      const seeded: HomeworkAssignment[] = PRESET_TEMPLATES.map((tpl, idx) => {
-        const pinCodes = ['ENG-101', 'ENG-102', 'ENG-103', 'ENG-104', 'ENG-105', 'ENG-106', 'ENG-107', 'ENG-108'];
-        const totalPoints = tpl.questions.reduce((sum, q) => sum + (q.points || 1), 0);
-        return {
-          id: `seed-hw-${tpl.id}`,
-          code: pinCodes[idx] || generatePinCode(),
-          title: tpl.title,
-          description: tpl.description,
-          subject: 'Tiếng Anh',
-          topic: tpl.topic,
-          gradeLevel: tpl.gradeLevel,
-          difficulty: tpl.difficulty,
-          timeLimitMinutes: tpl.timeLimitMinutes,
-          shuffleQuestions: false,
-          showResultsImmediately: true,
-          allowRetake: true,
-          createdByName: 'Giáo Viên Tiếng Anh (Mẫu Hệ Thống)',
-          createdAt: new Date(Date.now() - (idx + 1) * 86400000).toISOString(),
-          updatedAt: new Date(Date.now() - (idx + 1) * 86400000).toISOString(),
-          status: 'ACTIVE',
-          questions: tpl.questions,
-          totalPoints,
-        };
-      });
+    if (!existing) {
+      const seeded = buildSeededAssignments();
+
+      // Migrate custom (non-seed) assignments from legacy v1 if any exist
+      try {
+        const legacyRaw = localStorage.getItem(LEGACY_ASSIGNMENTS_KEY);
+        if (legacyRaw) {
+          const legacyList: HomeworkAssignment[] = JSON.parse(legacyRaw);
+          const customOnes = legacyList.filter((a) => !a.id.startsWith('seed-hw-'));
+          if (customOnes.length > 0) {
+            seeded.unshift(...customOnes);
+          }
+        }
+      } catch {
+        // ignore migration error
+      }
 
       localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(seeded));
+    }
 
-      // Seed a couple of demo student submissions for ENG-101 so the teacher can see the statistics immediately
+    const existingSubs = localStorage.getItem(SUBMISSIONS_KEY);
+    if (!existingSubs) {
       const demoSubmissions: HomeworkSubmission[] = [
         {
           id: 'sub-demo-1',
-          assignmentId: seeded[0].id,
-          assignmentCode: seeded[0].code,
-          assignmentTitle: seeded[0].title,
-          studentName: 'Nguyễn Văn An',
-          studentClass: '12A1',
+          assignmentId: 'seed-hw-tpl-th-present-tenses',
+          assignmentCode: 'ENG-TH2',
+          assignmentTitle: 'Bài 4: Thì Hiện Tại Đơn & Hiện Tại Tiếp Diễn',
+          studentName: 'Nguyễn Minh Anh',
           answers: {
-            'q-tense-1': 2,
-            'q-tense-2': 'has been working',
-            'q-tense-3': 'They have been living in Hanoi since 2019.',
-            'q-tense-4': { option: 'D', correction: 'went out' },
-            'q-tense-5': {
-              'Water freezes at 0 degrees Celsius.': 'Present Simple (Hiện tại đơn)',
-              'Look! The bus is coming.': 'Present Continuous (Hiện tại tiếp diễn)',
-              'I had already eaten before they arrived.': 'Past Perfect (Quá khứ hoàn thành)',
-              'This time tomorrow, I will be flying to Tokyo.': 'Future Continuous (Tương lai tiếp diễn)',
+            'th2-q1': 2,
+            'th2-q2': 'watches',
+            'th2-q3': { option: 'C', correction: 'like' },
+            'th2-q4': {
+              'every day / usually': 'Hiện tại đơn (Present Simple)',
+              'right now / Look!': 'Hiện tại tiếp diễn (Present Continuous)',
+              'Water boils at 100°C.': 'Sự thật hiển nhiên (Present Simple)',
             },
-            'q-tense-6': 'Last weekend, I went camping with my friends. We pitched tents and sang around the fire. Since Monday, I have finished my English assignments and prepared for the midterm test.',
+            'th2-q5': 'The children are playing in the park.',
           },
-          scores: {
-            'q-tense-1': 1.5,
-            'q-tense-2': 1.5,
-            'q-tense-3': 2,
-            'q-tense-4': 1.5,
-            'q-tense-5': 2,
-            'q-tense-6': 1.4,
-          },
-          aiEvaluations: {
-            'q-tense-6': {
-              score: 1.4,
-              maxScore: 1.5,
-              grammarScore: 1.4,
-              vocabScore: 1.4,
-              coherenceScore: 1.5,
-              feedback: 'Bài viết rất xuất sắc! Sử dụng thì Quá khứ đơn (went, pitched, sang) và Hiện tại hoàn thành (have finished, prepared) chuẩn xác. Bố cục tự nhiên, liên kết câu mượt mà.',
-              suggestedImprovement: 'Câu văn đã rất chuẩn. Bạn có thể bổ sung thêm một câu kết ngắn gọn (e.g., "It has been an exhausting yet memorable week.") để bài viết trọn vẹn hơn.',
-            },
-          },
-          totalScore: 9.9,
+          scores: { 'th2-q1': 2, 'th2-q2': 2, 'th2-q3': 2, 'th2-q4': 2, 'th2-q5': 2 },
+          totalScore: 10,
           maxTotalScore: 10,
-          percentage: 99,
-          timeSpentSeconds: 680,
-          submittedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-          isReviewedByTeacher: true,
+          percentage: 100,
+          timeSpentSeconds: 245,
+          submittedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
         },
         {
           id: 'sub-demo-2',
-          assignmentId: seeded[0].id,
-          assignmentCode: seeded[0].code,
-          assignmentTitle: seeded[0].title,
-          studentName: 'Trần Thị Mai',
-          studentClass: '12A1',
+          assignmentId: 'seed-hw-tpl-pt-12-tenses',
+          assignmentCode: 'ENG-PT1',
+          assignmentTitle: 'Bài 8: Tổng Ôn 12 Thì & Quy Tắc Phối Hợp Thì (THPTQG)',
+          studentName: 'Trần Hoàng Nam',
           answers: {
-            'q-tense-1': 1,
-            'q-tense-2': 'has been working',
-            'q-tense-3': 'They have been living in Hanoi since 2019.',
-            'q-tense-4': { option: 'D', correction: 'went out' },
-            'q-tense-5': {
-              'Water freezes at 0 degrees Celsius.': 'Present Simple (Hiện tại đơn)',
-              'Look! The bus is coming.': 'Present Continuous (Hiện tại tiếp diễn)',
-              'I had already eaten before they arrived.': 'Past Perfect (Quá khứ hoàn thành)',
-              'This time tomorrow, I will be flying to Tokyo.': 'Future Continuous (Tương lai tiếp diễn)',
+            'pt1-q1': 2,
+            'pt1-q2': 'has been working',
+            'pt1-q3': 'They have been living in Hanoi since 2019.',
+            'pt1-q4': {
+              'Water freezes at 0°C.': 'Present Simple (Hiện tại đơn)',
+              'I had eaten before they arrived.': 'Past Perfect (Quá khứ hoàn thành)',
+              'This time tomorrow, I will be flying.': 'Future Continuous (Tương lai tiếp diễn)',
+              'By 2030, I will have graduated.': 'Future Perfect (Tương lai hoàn thành)',
             },
-            'q-tense-6': 'I visit my grandparents last Sunday. We cook together. This week I study hard and read two books.',
+            'pt1-q5': { option: 'A', correction: 'send' },
           },
-          scores: {
-            'q-tense-1': 0,
-            'q-tense-2': 1.5,
-            'q-tense-3': 2,
-            'q-tense-4': 1.5,
-            'q-tense-5': 2,
-            'q-tense-6': 0.9,
-          },
-          aiEvaluations: {
-            'q-tense-6': {
-              score: 0.9,
-              maxScore: 1.5,
-              grammarScore: 0.8,
-              vocabScore: 1.0,
-              coherenceScore: 1.0,
-              feedback: 'Bạn đã nắm được ý chính nhưng còn nhầm thì. Với "last Sunday", cần dùng Quá khứ đơn ("visited", "cooked"). Với hành động tuần này nên dùng Hiện tại hoàn thành ("have studied", "have read").',
-              suggestedImprovement: 'Viết lại: "Last Sunday, I visited my grandparents and we cooked together. This week, I have studied hard and have read two books."',
-            },
-          },
-          totalScore: 7.9,
+          scores: { 'pt1-q1': 2, 'pt1-q2': 2, 'pt1-q3': 2, 'pt1-q4': 2, 'pt1-q5': 0 },
+          totalScore: 8,
           maxTotalScore: 10,
-          percentage: 79,
-          timeSpentSeconds: 840,
-          submittedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-          isReviewedByTeacher: false,
+          percentage: 80,
+          timeSpentSeconds: 410,
+          submittedAt: new Date(Date.now() - 3600000 * 1.5).toISOString(),
         },
       ];
-
       localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(demoSubmissions));
     }
   }
 
-  /**
-   * Retrieves all assignments
-   */
   static getAssignments(): HomeworkAssignment[] {
     this.initializeIfEmpty();
     try {
       const data = localStorage.getItem(ASSIGNMENTS_KEY);
-      return data ? JSON.parse(data) : [];
+      const list: HomeworkAssignment[] = data ? JSON.parse(data) : [];
+      return list.sort((a, b) => {
+        const orderA = a.orderIndex ?? 999;
+        const orderB = b.orderIndex ?? 999;
+        if (orderA !== orderB) return orderA - orderB;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
     } catch {
       return [];
     }
   }
 
-  /**
-   * Retrieves an assignment by ID or Code (e.g. ENG-101)
-   */
   static getAssignment(idOrCode: string): HomeworkAssignment | null {
     if (!idOrCode) return null;
     const all = this.getAssignments();
@@ -178,9 +163,6 @@ export class HomeworkStorageService {
     );
   }
 
-  /**
-   * Saves or updates an assignment
-   */
   static saveAssignment(assignment: HomeworkAssignment): HomeworkAssignment {
     this.initializeIfEmpty();
     const all = this.getAssignments();
@@ -200,9 +182,6 @@ export class HomeworkStorageService {
     return assignment;
   }
 
-  /**
-   * Deletes an assignment
-   */
   static deleteAssignment(id: string): boolean {
     const all = this.getAssignments();
     const filtered = all.filter((a) => a.id !== id);
@@ -213,166 +192,118 @@ export class HomeworkStorageService {
     return false;
   }
 
-  /**
-   * Duplicates an existing assignment
-   */
-  static duplicateAssignment(id: string): HomeworkAssignment | null {
-    const original = this.getAssignment(id);
-    if (!original) return null;
-
-    const duplicated: HomeworkAssignment = {
-      ...original,
-      id: `hw-${Date.now()}`,
-      code: generatePinCode(),
-      title: `${original.title} (Bản sao)`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    return this.saveAssignment(duplicated);
-  }
-
-  /**
-   * Retrieves all submissions
-   */
   static getSubmissions(): HomeworkSubmission[] {
     this.initializeIfEmpty();
     try {
       const data = localStorage.getItem(SUBMISSIONS_KEY);
-      return data ? JSON.parse(data) : [];
+      const list: HomeworkSubmission[] = data ? JSON.parse(data) : [];
+      return list.sort(
+        (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+      );
     } catch {
       return [];
     }
   }
 
-  /**
-   * Gets submissions for a specific assignment
-   */
   static getSubmissionsForAssignment(assignmentId: string): HomeworkSubmission[] {
-    const all = this.getSubmissions();
-    return all.filter((s) => s.assignmentId === assignmentId);
+    return this.getSubmissions().filter((s) => s.assignmentId === assignmentId);
   }
 
-  /**
-   * Gets a specific submission by ID
-   */
+  static getSubmissionsByStudent(studentName: string): HomeworkSubmission[] {
+    const norm = studentName.trim().toLowerCase();
+    if (!norm) return [];
+    return this.getSubmissions().filter((s) => s.studentName.trim().toLowerCase() === norm);
+  }
+
   static getSubmission(id: string): HomeworkSubmission | null {
-    const all = this.getSubmissions();
-    return all.find((s) => s.id === id) || null;
+    return this.getSubmissions().find((s) => s.id === id) || null;
   }
 
-  /**
-   * Saves a new student submission
-   */
   static saveSubmission(submission: HomeworkSubmission): HomeworkSubmission {
     this.initializeIfEmpty();
     const all = this.getSubmissions();
     const existingIndex = all.findIndex((s) => s.id === submission.id);
-
     if (existingIndex >= 0) {
       all[existingIndex] = submission;
     } else {
       all.unshift(submission);
     }
-
     localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(all));
     return submission;
   }
 
-  /**
-   * Updates an existing submission (e.g., teacher manual grading)
-   */
-  static updateSubmission(submission: HomeworkSubmission): HomeworkSubmission {
-    return this.saveSubmission(submission);
+  static deleteSubmission(id: string): boolean {
+    const all = this.getSubmissions();
+    const filtered = all.filter((s) => s.id !== id);
+    if (filtered.length !== all.length) {
+      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(filtered));
+      return true;
+    }
+    return false;
   }
 
-  /**
-   * Calculates statistics for an assignment
-   */
-  static getAssignmentStats(assignmentId: string) {
-    const assignment = this.getAssignment(assignmentId);
-    if (!assignment) return null;
+  static getStudentSummaries(): StudentSummary[] {
+    const submissions = this.getSubmissions();
+    const map = new Map<string, HomeworkSubmission[]>();
 
-    const submissions = this.getSubmissionsForAssignment(assignmentId);
-    const count = submissions.length;
-
-    if (count === 0) {
-      return {
-        totalSubmissions: 0,
-        averageScore: 0,
-        averagePercentage: 0,
-        highestScore: 0,
-        lowestScore: 0,
-        itemAnalysis: assignment.questions.map((q) => ({
-          questionId: q.id,
-          prompt: q.prompt,
-          type: q.type,
-          correctRate: 0,
-          totalAttempts: 0,
-        })),
-      };
-    }
-
-    const totalScores = submissions.reduce((sum, s) => sum + s.totalScore, 0);
-    const avgScore = Number((totalScores / count).toFixed(1));
-    const avgPercent = Number(
-      ((submissions.reduce((sum, s) => sum + s.percentage, 0)) / count).toFixed(1)
-    );
-    const scores = submissions.map((s) => s.totalScore);
-    const highestScore = Math.max(...scores);
-    const lowestScore = Math.min(...scores);
-
-    // Item Analysis: % correct for each question
-    const itemAnalysis = assignment.questions.map((q) => {
-      let correctCount = 0;
-      submissions.forEach((sub) => {
-        const earned = sub.scores[q.id] || 0;
-        const max = q.points || 1;
-        if (earned >= max * 0.7) {
-          correctCount++;
-        }
-      });
-
-      const correctRate = Math.round((correctCount / count) * 100);
-      return {
-        questionId: q.id,
-        prompt: q.prompt,
-        type: q.type,
-        correctRate,
-        totalAttempts: count,
-      };
+    submissions.forEach((sub) => {
+      const key = sub.studentName.trim().toLowerCase();
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(sub);
     });
 
-    return {
-      totalSubmissions: count,
-      averageScore: avgScore,
-      averagePercentage: avgPercent,
-      highestScore,
-      lowestScore,
-      itemAnalysis,
-    };
+    const summaries: StudentSummary[] = [];
+    map.forEach((subs) => {
+      const sorted = [...subs].sort(
+        (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+      );
+      const avgPct = Math.round(
+        sorted.reduce((sum, s) => sum + s.percentage, 0) / sorted.length
+      );
+      const maxPct = Math.max(...sorted.map((s) => s.percentage));
+      const uniqueIds = new Set(sorted.map((s) => s.assignmentId));
+
+      summaries.push({
+        studentName: sorted[0].studentName,
+        attemptCount: sorted.length,
+        uniqueAssignments: uniqueIds.size,
+        averagePercentage: avgPct,
+        highestPercentage: maxPct,
+        latestSubmittedAt: sorted[0].submittedAt,
+        submissions: sorted,
+      });
+    });
+
+    return summaries.sort(
+      (a, b) =>
+        new Date(b.latestSubmittedAt).getTime() - new Date(a.latestSubmittedAt).getTime()
+    );
   }
 
-  /**
-   * Exports submissions to CSV format string
-   */
-  static exportSubmissionsToCsv(assignmentId: string): string {
-    const assignment = this.getAssignment(assignmentId);
-    const submissions = this.getSubmissionsForAssignment(assignmentId);
-
-    const headers = ['STT', 'Họ Và Tên', 'Lớp/Phòng', 'Mã Bài Tập', 'Điểm Đạt Được', 'Điểm Tối Đa', 'Tỷ Lệ (%)', 'Thời Gian Làm (giây)', 'Ngày Nộp'];
-    const rows = submissions.map((s, idx) => [
+  static exportSubmissionsToCsv(submissions?: HomeworkSubmission[]): string {
+    const list = submissions ?? this.getSubmissions();
+    const headers = [
+      'STT',
+      'Họ Và Tên',
+      'Mã Bài Tập',
+      'Tên Bài Tập',
+      'Điểm Đạt Được',
+      'Điểm Tối Đa',
+      'Tỷ Lệ (%)',
+      'Thời Gian (giây)',
+      'Ngày Nộp',
+    ];
+    const rows = list.map((s, idx) => [
       idx + 1,
       `"${s.studentName.replace(/"/g, '""')}"`,
-      `"${(s.studentClass || '').replace(/"/g, '""')}"`,
       `"${s.assignmentCode}"`,
+      `"${s.assignmentTitle.replace(/"/g, '""')}"`,
       s.totalScore,
       s.maxTotalScore,
       `${s.percentage}%`,
       s.timeSpentSeconds,
       `"${new Date(s.submittedAt).toLocaleString('vi-VN')}"`,
     ]);
-
     return [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
   }
 }

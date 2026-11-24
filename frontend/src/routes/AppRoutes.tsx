@@ -4,6 +4,7 @@ import { HomeworkHubPage } from '../pages/HomeworkHubPage';
 import { HomeworkCreatePage } from '../pages/HomeworkCreatePage';
 import { HomeworkDoPage } from '../pages/HomeworkDoPage';
 import { HomeworkResultPage } from '../pages/HomeworkResultPage';
+import { AdminDashboardPage } from '../pages/AdminDashboardPage';
 import { AppShell } from '../components/AppShell';
 
 export const AppRoutes: React.FC = () => {
@@ -15,6 +16,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/homework/create" element={<HomeworkCreatePage />} />
         <Route path="/homework/do/:codeOrId" element={<HomeworkDoPage />} />
         <Route path="/homework/result/:submissionId" element={<HomeworkResultPage />} />
+        <Route path="/admin" element={<AdminDashboardPage />} />
         <Route path="*" element={<Navigate to="/homework" replace />} />
       </Routes>
     </AppShell>

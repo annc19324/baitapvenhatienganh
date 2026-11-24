@@ -7,14 +7,18 @@ import {
   ArrowLeft,
   RotateCcw,
   HelpCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { HomeworkStorageService } from '../services/homeworkStorage';
 import { HomeworkSubmission, HomeworkAssignment } from '../types/homework';
+import { useAuth } from '../context/AuthContext';
 import { QuestionTypeBadge } from '../components/QuestionTypeBadge';
+import { EducationLevelBadge } from '../components/EducationLevelBadge';
 
 export const HomeworkResultPage: React.FC = () => {
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
 
   const [submission, setSubmission] = useState<HomeworkSubmission | null>(null);
   const [assignment, setAssignment] = useState<HomeworkAssignment | null>(null);
@@ -63,15 +67,28 @@ export const HomeworkResultPage: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Top Bar */}
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => navigate('/homework')}
-          className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-blue-600 transition"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Về danh sách bài tập</span>
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/homework')}
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-blue-600 transition"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Về bài tập A–Z</span>
+          </button>
+
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => navigate('/admin')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 text-xs font-bold"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Quản trị Admin</span>
+            </button>
+          )}
+        </div>
 
         <button
           type="button"
@@ -86,12 +103,15 @@ export const HomeworkResultPage: React.FC = () => {
       {/* Score Summary Card */}
       <section className="rounded-3xl bg-gradient-to-br from-slate-900 via-[#0F2557] to-slate-900 text-white p-6 sm:p-8 shadow-elevated flex flex-col sm:flex-row items-center justify-between gap-6">
         <div className="space-y-2 text-center sm:text-left">
-          <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-teal-300 font-mono font-bold text-xs">
-            {submission.assignmentCode}
-          </span>
+          <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+            <span className="px-3 py-0.5 rounded-full bg-white/10 text-teal-300 font-mono font-bold text-xs">
+              {submission.assignmentCode}
+            </span>
+            <EducationLevelBadge levelId={assignment.levelId} />
+          </div>
           <h1 className="text-xl sm:text-2xl font-extrabold leading-snug">{assignment.title}</h1>
           <p className="text-sm text-slate-300">
-            Học sinh: <strong className="text-white">{submission.studentName}</strong>
+            Người làm bài: <strong className="text-white">{submission.studentName}</strong>
           </p>
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 pt-1 text-xs font-semibold">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10">
@@ -173,7 +193,6 @@ export const HomeworkResultPage: React.FC = () => {
                 {q.prompt}
               </p>
 
-              {/* MCQ / Pronunciation */}
               {(q.type === 'MULTIPLE_CHOICE' || q.type === 'PRONUNCIATION') && q.options && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {q.options.map((opt, oIdx) => {
@@ -202,7 +221,6 @@ export const HomeworkResultPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Fill Blank */}
               {q.type === 'FILL_BLANK' && (
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 text-xs sm:text-sm space-y-1">
                   <p>
@@ -217,7 +235,6 @@ export const HomeworkResultPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Word Reorder */}
               {q.type === 'WORD_REORDER' && (
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 text-xs sm:text-sm space-y-1">
                   <p>
@@ -232,7 +249,6 @@ export const HomeworkResultPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Matching */}
               {q.type === 'MATCHING' && q.pairs && (
                 <div className="space-y-1.5">
                   {q.pairs.map((p, pIdx) => {
@@ -249,7 +265,13 @@ export const HomeworkResultPage: React.FC = () => {
                       >
                         <span className="font-bold">{p.left}</span>
                         <span>
-                          <span className={ok ? 'text-emerald-700 dark:text-emerald-300 font-bold' : 'text-rose-600 line-through mr-2'}>
+                          <span
+                            className={
+                              ok
+                                ? 'text-emerald-700 dark:text-emerald-300 font-bold'
+                                : 'text-rose-600 line-through mr-2'
+                            }
+                          >
                             {chosen || '(Trống)'}
                           </span>
                           {!ok && <strong className="text-emerald-700 dark:text-emerald-300">→ {p.right}</strong>}
@@ -260,7 +282,6 @@ export const HomeworkResultPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Error Correction */}
               {q.type === 'ERROR_CORRECTION' && (
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 text-xs sm:text-sm space-y-1">
                   <p className="font-semibold">{q.sentence}</p>
@@ -277,7 +298,6 @@ export const HomeworkResultPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Reading Comprehension */}
               {q.type === 'READING_COMPREHENSION' && q.subQuestions && (
                 <div className="space-y-2">
                   {q.subQuestions.map((sq, sqIdx) => {
@@ -297,7 +317,8 @@ export const HomeworkResultPage: React.FC = () => {
                         </p>
                         {sq.type === 'MULTIPLE_CHOICE' && sq.options && sq.correctOptionIndex !== undefined && (
                           <p className="text-emerald-600 dark:text-emerald-400 font-bold">
-                            Đáp án đúng: {String.fromCharCode(65 + sq.correctOptionIndex)}. {sq.options[sq.correctOptionIndex]}
+                            Đáp án đúng: {String.fromCharCode(65 + sq.correctOptionIndex)}.{' '}
+                            {sq.options[sq.correctOptionIndex]}
                           </p>
                         )}
                         {sq.type === 'FILL_BLANK' && sq.acceptedAnswers && (
@@ -311,7 +332,6 @@ export const HomeworkResultPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Essay */}
               {q.type === 'ESSAY' && (
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 text-xs sm:text-sm space-y-2">
                   <p className="font-bold text-slate-500">Bài viết của bạn:</p>
@@ -325,7 +345,6 @@ export const HomeworkResultPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Explanation */}
               {q.explanation && (
                 <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/70 dark:border-blue-900/60 text-xs sm:text-sm flex items-start gap-2">
                   <HelpCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
