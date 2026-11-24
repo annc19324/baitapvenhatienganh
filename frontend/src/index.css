@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --brand-primary: #2563eb;
+  --brand-secondary: #14b8a6;
+  --hero-from: #0f172a;
+  --hero-via: #0f2557;
+  --hero-to: #0f172a;
+}
+
 @layer base {
   html {
     font-size: 16px;
@@ -23,10 +31,26 @@
     padding-top: env(safe-area-inset-top, 0px);
   }
   .surface-card {
-    @apply bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800/90 shadow-soft;
+    @apply bg-white/95 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800/90 shadow-soft backdrop-blur-sm;
   }
   .glass-bar {
     @apply bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border-slate-200/80 dark:border-slate-800/80;
+  }
+  .btn-brand {
+    background-color: var(--brand-primary);
+    color: #ffffff;
+  }
+  .btn-brand:hover {
+    filter: brightness(1.08);
+  }
+  .text-brand {
+    color: var(--brand-primary);
+  }
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+  }
+  .bg-hero-custom {
+    background-image: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-via) 50%, var(--hero-to) 100%);
   }
 }
 
@@ -64,7 +88,6 @@
   background-size: 20px 20px;
 }
 
-/* Print styles for exporting clean PDF / printing offline */
 @media print {
   header,
   aside,
@@ -87,24 +110,5 @@
     max-width: 100% !important;
     padding: 0 !important;
     margin: 0 !important;
-  }
-
-  .dark {
-    color-scheme: light !important;
-  }
-
-  .shadow-soft,
-  .shadow-elevated,
-  .shadow-sm,
-  .shadow-md,
-  .shadow-lg,
-  .shadow-xl,
-  .shadow-2xl {
-    box-shadow: none !important;
-  }
-
-  .break-inside-avoid {
-    break-inside: avoid;
-    page-break-inside: avoid;
   }
 }

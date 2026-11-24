@@ -16,10 +16,13 @@ import {
   CheckCircle2,
   BookOpenText,
   Plus,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { HomeworkStorageService } from '../services/homeworkStorage';
 import { HomeworkAssignment, EducationLevelId } from '../types/homework';
 import { useAuth } from '../context/AuthContext';
+import { useSiteConfig } from '../context/SiteConfigContext';
 import { useToast } from '../context/ToastContext';
 import {
   EDUCATION_LEVELS,
@@ -31,6 +34,7 @@ import { TheoryModal } from '../components/TheoryModal';
 export const HomeworkHubPage: React.FC = () => {
   const navigate = useNavigate();
   const { isAdmin, studentName, saveStudentName } = useAuth();
+  const { config } = useSiteConfig();
   const { copyAndNotify, showToast } = useToast();
 
   const [assignments, setAssignments] = useState<HomeworkAssignment[]>([]);
@@ -41,7 +45,6 @@ export const HomeworkHubPage: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [theoryAssignment, setTheoryAssignment] = useState<HomeworkAssignment | null>(null);
 
-  // Student quick name input
   const [editingName, setEditingName] = useState(!studentName);
   const [nameDraft, setNameDraft] = useState(studentName);
 
@@ -54,7 +57,6 @@ export const HomeworkHubPage: React.FC = () => {
     if (studentName) setEditingName(false);
   }, [studentName]);
 
-  // Map student's best/latest score per assignment
   const studentLatestByAssignment = useMemo(() => {
     if (!studentName) return {};
     const subs = HomeworkStorageService.getSubmissionsByStudent(studentName);
@@ -115,6 +117,14 @@ export const HomeworkHubPage: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleAdminDelete = (assign: HomeworkAssignment) => {
+    if (window.confirm(`Xóa bài tập "${assign.title}"?`)) {
+      HomeworkStorageService.deleteAssignment(assign.id);
+      setAssignments(HomeworkStorageService.getAssignments());
+      showToast({ message: 'Đã xóa bài tập', type: 'success' });
+    }
+  };
+
   const filteredAssignments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return assignments.filter((a) => {
@@ -133,24 +143,30 @@ export const HomeworkHubPage: React.FC = () => {
 
   return (
     <div className="space-y-6 sm:space-y-7 animate-fade-in">
-      {/* ================= HERO: STUDENT PROFILE & QUICK PIN ================= */}
-      <section className="rounded-3xl bg-gradient-to-br from-slate-900 via-[#0F2557] to-slate-900 text-white p-5 sm:p-8 shadow-elevated border border-slate-800/80 relative overflow-hidden">
-        <div className="absolute inset-0 bg-dot-grid opacity-30 pointer-events-none" />
+      {/* ================= CUSTOMIZABLE HERO BANNER ================= */}
+      <section className="rounded-3xl bg-hero-custom text-white p-5 sm:p-8 shadow-elevated border border-white/10 relative overflow-hidden">
+        {config.heroPattern && <div className="absolute inset-0 bg-dot-grid opacity-30 pointer-events-none" />}
 
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          {/* Left: Welcome & Persistent Name */}
+          {/* Left: Dynamic Hero Copy & Student Name */}
           <div className="lg:col-span-7 space-y-4">
             <div className="space-y-1.5">
-              <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-teal-300 text-xs font-bold border border-white/10">
-                Lộ trình Tiếng Anh A–Z • Mầm non đến Đại học
-              </span>
+              {config.heroBadge && (
+                <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-teal-300 text-xs font-bold border border-white/10">
+                  {config.heroBadge}
+                </span>
+              )}
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-snug">
-                Học Lý Thuyết Ngắn Gọn &amp;{' '}
-                <span className="text-teal-300">Luyện Bài Tập Ngay</span>
+                {config.heroTitle}{' '}
+                <span style={{ color: config.secondaryColor }} className="brightness-125">
+                  {config.heroHighlight}
+                </span>
               </h1>
-              <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-                Đầy đủ kiến thức trọng tâm kèm ví dụ dễ hiểu và bài tập thực hành từ cơ bản đến nâng cao. Chỉ cần nhập tên 1 lần để bắt đầu.
-              </p>
+              {config.heroDescription && (
+                <p className="text-xs sm:text-sm text-slate-200/90 max-w-xl leading-relaxed">
+                  {config.heroDescription}
+                </p>
+              )}
             </div>
 
             {/* Persistent Student Name Bar */}
@@ -160,13 +176,13 @@ export const HomeworkHubPage: React.FC = () => {
                   <User className="w-4 h-4 text-teal-300" />
                   <span>Xin chào, {studentName}</span>
                 </span>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-200 font-bold">
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/15 text-white font-bold">
                   Đã làm {completedCount}/{assignments.length} bài
                 </span>
                 <button
                   type="button"
                   onClick={() => setEditingName(true)}
-                  className="text-xs font-bold text-slate-300 hover:text-white inline-flex items-center gap-1 ml-1 underline"
+                  className="text-xs font-bold text-slate-200 hover:text-white inline-flex items-center gap-1 ml-1 underline"
                 >
                   <Edit2 className="w-3 h-3" />
                   <span>Đổi tên</span>
@@ -182,11 +198,12 @@ export const HomeworkHubPage: React.FC = () => {
                   placeholder="Nhập tên của bạn (tự lưu cho lần sau)..."
                   value={nameDraft}
                   onChange={(e) => setNameDraft(e.target.value)}
-                  className="flex-1 min-w-0 px-3.5 py-2.5 bg-white text-slate-900 text-base sm:text-sm font-bold rounded-xl placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  className="flex-1 min-w-0 px-3.5 py-2.5 bg-white text-slate-900 text-base sm:text-sm font-bold rounded-xl placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-white/60"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-extrabold text-xs sm:text-sm rounded-xl transition shrink-0"
+                  style={{ backgroundColor: config.secondaryColor }}
+                  className="px-4 py-2.5 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:brightness-110 transition shrink-0"
                 >
                   Lưu tên
                 </button>
@@ -198,14 +215,14 @@ export const HomeworkHubPage: React.FC = () => {
           <div className="lg:col-span-5">
             <div className="bg-white/10 backdrop-blur-xl border border-white/15 rounded-2xl p-4 sm:p-5 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-extrabold uppercase tracking-wider text-teal-300">
+                <p className="text-xs font-extrabold uppercase tracking-wider text-white/80">
                   Vào nhanh bằng mã bài tập
                 </p>
                 {isAdmin && (
                   <button
                     type="button"
                     onClick={() => navigate('/homework/create')}
-                    className="text-xs font-bold text-white bg-blue-500 hover:bg-blue-400 px-2.5 py-1 rounded-lg inline-flex items-center gap-1"
+                    className="text-xs font-bold btn-brand px-2.5 py-1 rounded-lg inline-flex items-center gap-1"
                   >
                     <Plus className="w-3.5 h-3.5" /> Tạo mới
                   </button>
@@ -218,25 +235,25 @@ export const HomeworkHubPage: React.FC = () => {
                   placeholder="VD: ENG-MN1, ENG-PT1"
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value.toUpperCase())}
-                  className="flex-1 min-w-0 px-3.5 py-3 bg-white text-slate-900 font-mono font-extrabold tracking-wider text-base sm:text-sm rounded-xl placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 uppercase"
+                  className="flex-1 min-w-0 px-3.5 py-3 bg-white text-slate-900 font-mono font-extrabold tracking-wider text-base sm:text-sm rounded-xl placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none uppercase"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-3 bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm rounded-xl flex items-center justify-center gap-1 transition shrink-0"
+                  className="px-4 py-3 btn-brand font-extrabold text-sm rounded-xl flex items-center justify-center gap-1 transition shrink-0"
                 >
                   <span>Vào</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
 
-              <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-300">
+              <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-white/75">
                 <span>Nhanh:</span>
                 {['ENG-MN1', 'ENG-TH2', 'ENG-PT1', 'ENG-DH1'].map((code) => (
                   <button
                     key={code}
                     type="button"
                     onClick={() => setPinInput(code)}
-                    className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/20 font-mono font-bold text-teal-300 transition"
+                    className="px-2 py-0.5 rounded-md bg-white/15 hover:bg-white/25 font-mono font-bold text-white transition"
                   >
                     {code}
                   </button>
@@ -247,7 +264,7 @@ export const HomeworkHubPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ================= LEVEL ROADMAP FILTER (Mầm non → Đại học) ================= */}
+      {/* ================= LEVEL ROADMAP FILTER ================= */}
       <section className="space-y-3">
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
           <button
@@ -256,7 +273,7 @@ export const HomeworkHubPage: React.FC = () => {
             className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold border whitespace-nowrap transition shrink-0 ${
               selectedLevel === 'ALL'
                 ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent shadow-sm'
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                : 'surface-card text-slate-600 dark:text-slate-300 hover:border-slate-300'
             }`}
           >
             Tất cả A–Z ({assignments.length})
@@ -273,7 +290,7 @@ export const HomeworkHubPage: React.FC = () => {
                 className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold border whitespace-nowrap transition shrink-0 flex items-center gap-1.5 ${
                   active
                     ? `${lvl.activeTabClass} shadow-sm`
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                    : 'surface-card text-slate-700 dark:text-slate-300 hover:border-slate-300'
                 }`}
               >
                 <span>{lvl.emoji}</span>
@@ -286,9 +303,8 @@ export const HomeworkHubPage: React.FC = () => {
           })}
         </div>
 
-        {/* Selected level summary strip */}
         {activeLevelMeta && (
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center gap-2.5 text-xs sm:text-sm">
+          <div className="p-3.5 rounded-2xl surface-card flex items-center gap-2.5 text-xs sm:text-sm">
             <span className="text-lg">{activeLevelMeta.emoji}</span>
             <p className="text-slate-700 dark:text-slate-200">
               <strong className="text-slate-900 dark:text-white">
@@ -300,11 +316,11 @@ export const HomeworkHubPage: React.FC = () => {
         )}
       </section>
 
-      {/* ================= SEARCH & VIEW MODE SWITCHER ================= */}
+      {/* ================= SEARCH & VIEW MODE ================= */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <BookOpen className="w-5 h-5 text-brand" />
             <span>Bài Học &amp; Bài Tập ({filteredAssignments.length})</span>
           </h2>
 
@@ -316,7 +332,7 @@ export const HomeworkHubPage: React.FC = () => {
                 placeholder="Tìm bài học, chủ đề, mã PIN..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-8 py-2.5 text-base sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-10 pr-8 py-2.5 text-base sm:text-sm surface-card rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               {searchQuery && (
                 <button
@@ -329,15 +345,14 @@ export const HomeworkHubPage: React.FC = () => {
               )}
             </div>
 
-            {/* Grid / List View Switcher */}
             <div className="inline-flex bg-slate-200/70 dark:bg-slate-800 p-1 rounded-xl shrink-0">
               <button
                 type="button"
                 onClick={() => setViewMode('grid')}
-                aria-label="Hiển thị dạng lưới"
+                aria-label="Dạng lưới"
                 className={`p-2 rounded-lg transition ${
                   viewMode === 'grid'
-                    ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm'
+                    ? 'bg-white dark:bg-slate-900 text-brand shadow-sm'
                     : 'text-slate-500'
                 }`}
               >
@@ -346,10 +361,10 @@ export const HomeworkHubPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setViewMode('list')}
-                aria-label="Hiển thị dạng danh sách"
+                aria-label="Dạng danh sách"
                 className={`p-2 rounded-lg transition ${
                   viewMode === 'list'
-                    ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm'
+                    ? 'bg-white dark:bg-slate-900 text-brand shadow-sm'
                     : 'text-slate-500'
                 }`}
               >
@@ -372,7 +387,7 @@ export const HomeworkHubPage: React.FC = () => {
                 setSelectedLevel('ALL');
                 setSearchQuery('');
               }}
-              className="text-xs font-bold text-blue-600 hover:underline"
+              className="text-xs font-bold text-brand hover:underline"
             >
               Xem toàn bộ lộ trình A–Z
             </button>
@@ -384,7 +399,7 @@ export const HomeworkHubPage: React.FC = () => {
               return (
                 <article
                   key={assignment.id}
-                  className="surface-card rounded-3xl p-5 hover:shadow-elevated hover:border-blue-300 dark:hover:border-blue-800 transition flex flex-col justify-between gap-4"
+                  className="surface-card rounded-3xl p-5 hover:shadow-elevated transition flex flex-col justify-between gap-4"
                 >
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -419,7 +434,7 @@ export const HomeworkHubPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => navigate(`/homework/result/${myResult.subId}`)}
-                        className="w-full px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center justify-between hover:opacity-90 transition"
+                        className="w-full px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center justify-between"
                       >
                         <span className="inline-flex items-center gap-1.5">
                           <CheckCircle2 className="w-3.5 h-3.5" />
@@ -433,40 +448,60 @@ export const HomeworkHubPage: React.FC = () => {
                   </div>
 
                   {/* Actions */}
-                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2">
-                    {assignment.theory && (
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2">
+                    <div className="flex items-center gap-2">
+                      {assignment.theory && (
+                        <button
+                          type="button"
+                          onClick={() => setTheoryAssignment(assignment)}
+                          className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                        >
+                          <BookOpenText className="w-3.5 h-3.5 text-brand" />
+                          <span>Lý thuyết</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
-                        onClick={() => setTheoryAssignment(assignment)}
-                        className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                        onClick={() => navigate(`/homework/do/${assignment.code}`)}
+                        className="flex-1 py-2.5 px-3 btn-brand active:scale-[0.98] rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm transition"
                       >
-                        <BookOpenText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                        <span>Lý thuyết</span>
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Làm bài</span>
                       </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/homework/do/${assignment.code}`)}
-                      className="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm transition"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Làm bài</span>
-                    </button>
+                    </div>
 
                     {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopyLink(assignment)}
-                        title="Sao chép link chia sẻ"
-                        className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-                      >
-                        {copiedId === assignment.id ? (
-                          <Check className="w-4 h-4 text-emerald-500" />
-                        ) : (
-                          <Share2 className="w-4 h-4" />
-                        )}
-                      </button>
+                      <div className="flex items-center justify-end gap-1 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/homework/edit/${assignment.id}`)}
+                          title="Chỉnh sửa bài tập & lý thuyết"
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-bold inline-flex items-center gap-1"
+                        >
+                          <Pencil className="w-3 h-3" /> Sửa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyLink(assignment)}
+                          title="Sao chép link"
+                          className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                        >
+                          {copiedId === assignment.id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          ) : (
+                            <Share2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdminDelete(assignment)}
+                          title="Xóa bài tập"
+                          className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-rose-600"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </article>
@@ -474,19 +509,18 @@ export const HomeworkHubPage: React.FC = () => {
             })}
           </div>
         ) : (
-          /* Compact List View */
           <div className="space-y-2.5">
             {filteredAssignments.map((assignment) => {
               const myResult = studentLatestByAssignment[assignment.id];
               return (
                 <article
                   key={assignment.id}
-                  className="surface-card rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3.5 hover:border-blue-300 dark:hover:border-blue-800 transition"
+                  className="surface-card rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3.5 transition"
                 >
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <EducationLevelBadge levelId={assignment.levelId} />
-                      <span className="font-mono font-extrabold text-[11px] text-blue-600 dark:text-blue-400">
+                      <span className="font-mono font-extrabold text-[11px] text-brand">
                         {assignment.code}
                       </span>
                       <span className="text-xs text-slate-400">
@@ -504,14 +538,14 @@ export const HomeworkHubPage: React.FC = () => {
                     </h3>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
                     {assignment.theory && (
                       <button
                         type="button"
                         onClick={() => setTheoryAssignment(assignment)}
                         className="flex-1 md:flex-none px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs font-bold flex items-center justify-center gap-1.5"
                       >
-                        <BookOpenText className="w-3.5 h-3.5 text-blue-600" />
+                        <BookOpenText className="w-3.5 h-3.5 text-brand" />
                         <span>Lý thuyết</span>
                       </button>
                     )}
@@ -519,11 +553,32 @@ export const HomeworkHubPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => navigate(`/homework/do/${assignment.code}`)}
-                      className="flex-1 md:flex-none px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm"
+                      className="flex-1 md:flex-none px-4 py-2.5 rounded-xl btn-brand text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
                       <span>Làm bài</span>
                     </button>
+
+                    {isAdmin && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/homework/edit/${assignment.id}`)}
+                          className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                          title="Sửa bài tập"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdminDelete(assignment)}
+                          className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-rose-600"
+                          title="Xóa bài tập"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </article>
               );
@@ -532,7 +587,6 @@ export const HomeworkHubPage: React.FC = () => {
         )}
       </section>
 
-      {/* Theory Modal */}
       <TheoryModal
         assignment={theoryAssignment}
         onClose={() => setTheoryAssignment(null)}

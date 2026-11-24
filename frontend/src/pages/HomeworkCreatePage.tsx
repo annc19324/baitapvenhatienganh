@@ -1,11 +1,25 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ArrowLeft, Save, BookOpen, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Plus,
+  Trash2,
+  ArrowLeft,
+  Save,
+  BookOpen,
+  ShieldCheck,
+  BookOpenText,
+  Copy,
+  ArrowUp,
+  ArrowDown,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import {
   HomeworkQuestion,
   HomeworkQuestionType,
   HomeworkAssignment,
   EducationLevelId,
+  TheorySection,
 } from '../types/homework';
 import { HomeworkStorageService, generatePinCode } from '../services/homeworkStorage';
 import { useAuth } from '../context/AuthContext';
@@ -24,35 +38,67 @@ const CREATABLE_TYPES: HomeworkQuestionType[] = [
 ];
 
 export const HomeworkCreatePage: React.FC = () => {
+  const { id: editId } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const { isAdmin, adminUsername } = useAuth();
   const { showToast } = useToast();
 
+  const isEditMode = Boolean(editId);
+
+  const [existingAssignment, setExistingAssignment] = useState<HomeworkAssignment | null>(null);
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [code, setCode] = useState(() => generatePinCode());
   const [levelId, setLevelId] = useState<EducationLevelId>('THCS');
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(15);
+  const [status, setStatus] = useState<'ACTIVE' | 'CLOSED'>('ACTIVE');
+
+  // Full Theory Editor state
+  const [theoryOpen, setTheoryOpen] = useState(false);
   const [theorySummary, setTheorySummary] = useState('');
-  const [theoryFormula, setTheoryFormula] = useState('');
-  const [code] = useState(() => generatePinCode());
+  const [theorySections, setTheorySections] = useState<TheorySection[]>([]);
+
   const [questions, setQuestions] = useState<HomeworkQuestion[]>([]);
+
+  useEffect(() => {
+    if (!editId) return;
+    const found = HomeworkStorageService.getAssignment(editId);
+    if (!found) {
+      showToast({ message: 'Không tìm thấy bài tập để sửa', type: 'error' });
+      navigate('/admin');
+      return;
+    }
+    setExistingAssignment(found);
+    setTitle(found.title);
+    setDescription(found.description || '');
+    setCode(found.code);
+    setLevelId(found.levelId || 'THCS');
+    setTimeLimitMinutes(found.timeLimitMinutes);
+    setStatus(found.status === 'CLOSED' ? 'CLOSED' : 'ACTIVE');
+    setQuestions(JSON.parse(JSON.stringify(found.questions)));
+    if (found.theory) {
+      setTheorySummary(found.theory.summary || '');
+      setTheorySections(JSON.parse(JSON.stringify(found.theory.sections || [])));
+    }
+  }, [editId]);
 
   if (!isAdmin) {
     return (
       <div className="max-w-md mx-auto py-12 text-center animate-slide-up">
         <div className="surface-card rounded-3xl p-8 space-y-4 shadow-elevated">
-          <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/70 text-brand flex items-center justify-center mx-auto">
             <ShieldCheck className="w-7 h-7" />
           </div>
           <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
             Chỉ dành cho Quản trị viên (Admin)
           </h1>
           <p className="text-sm text-slate-500">
-            Vui lòng đăng nhập tài khoản Admin để tạo và chỉnh sửa bài tập mới.
+            Vui lòng đăng nhập tài khoản Admin để thêm, sửa hoặc xóa bài tập.
           </p>
           <button
             type="button"
             onClick={() => navigate('/admin')}
-            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm rounded-2xl shadow-glow-blue"
+            className="w-full py-3.5 btn-brand font-extrabold text-sm rounded-2xl"
           >
             Đăng Nhập Admin
           </button>
@@ -61,8 +107,32 @@ export const HomeworkCreatePage: React.FC = () => {
     );
   }
 
-  const totalPoints = questions.reduce((sum, q) => sum + (q.points || 1), 0);
+  const totalPoints = Number(questions.reduce((sum, q) => sum + (q.points || 1), 0).toFixed(1));
 
+  // Theory section handlers
+  const handleAddTheorySection = () => {
+    setTheorySections((prev) => [
+      ...prev,
+      {
+        heading: `Mục ${prev.length + 1}: Tiêu đề kiến thức`,
+        formula: '',
+        points: ['Ý chính 1...'],
+        examples: [{ en: '', vi: '' }],
+        tip: '',
+      },
+    ]);
+    setTheoryOpen(true);
+  };
+
+  const updateTheorySection = (index: number, updater: (sec: TheorySection) => TheorySection) => {
+    setTheorySections((prev) => prev.map((sec, i) => (i === index ? updater({ ...sec }) : sec)));
+  };
+
+  const handleDeleteTheorySection = (index: number) => {
+    setTheorySections((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Question handlers
   const handleAddQuestion = (type: HomeworkQuestionType) => {
     const newQ: HomeworkQuestion = {
       id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -119,8 +189,39 @@ export const HomeworkCreatePage: React.FC = () => {
     setQuestions((prev) => prev.map((q, i) => (i === index ? updater({ ...q }) : q)));
   };
 
+  const handleDuplicateQuestion = (index: number) => {
+    const dup: HomeworkQuestion = {
+      ...JSON.parse(JSON.stringify(questions[index])),
+      id: `q-dup-${Date.now()}`,
+    };
+    setQuestions((prev) => {
+      const next = [...prev];
+      next.splice(index + 1, 0, dup);
+      return next;
+    });
+  };
+
+  const handleMoveQuestion = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= questions.length) return;
+    setQuestions((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
   const handleDeleteQuestion = (index: number) => {
     setQuestions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDeleteAssignment = () => {
+    if (!existingAssignment) return;
+    if (window.confirm(`Xóa vĩnh viễn bài tập "${existingAssignment.title}"?`)) {
+      HomeworkStorageService.deleteAssignment(existingAssignment.id);
+      showToast({ message: 'Đã xóa bài tập', type: 'success' });
+      navigate('/admin');
+    }
   };
 
   const handleSave = () => {
@@ -134,16 +235,27 @@ export const HomeworkCreatePage: React.FC = () => {
     }
 
     const levelMeta = EDUCATION_LEVEL_MAP[levelId];
-    const hasTheory = theorySummary.trim() || theoryFormula.trim();
+    const cleanSections = theorySections
+      .filter((s) => s.heading.trim() || s.points.some((p) => p.trim()))
+      .map((s) => ({
+        ...s,
+        points: s.points.filter((p) => p.trim()),
+        examples: s.examples?.filter((ex) => ex.en.trim() || ex.vi.trim()),
+        formula: s.formula?.trim() || undefined,
+        tip: s.tip?.trim() || undefined,
+      }));
+    const hasTheory = theorySummary.trim() || cleanSections.length > 0;
 
     const assignment: HomeworkAssignment = {
-      id: `hw-${Date.now()}`,
-      code,
+      ...(existingAssignment || {}),
+      id: existingAssignment?.id || `hw-${Date.now()}`,
+      code: code.trim().toUpperCase() || generatePinCode(),
       title: title.trim(),
-      description: theorySummary.trim(),
+      description: description.trim(),
       subject: 'Tiếng Anh',
       topic: title.trim(),
       levelId,
+      orderIndex: existingAssignment?.orderIndex,
       gradeLevel: `${levelMeta.label} (${levelMeta.cefr})`,
       difficulty:
         levelId === 'MAM_NON' || levelId === 'TIEU_HOC'
@@ -155,23 +267,14 @@ export const HomeworkCreatePage: React.FC = () => {
       shuffleQuestions: false,
       showResultsImmediately: true,
       allowRetake: true,
-      createdByName: adminUsername || 'Admin',
-      createdAt: new Date().toISOString(),
+      createdByName: existingAssignment?.createdByName || adminUsername || 'Admin',
+      createdAt: existingAssignment?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      status: 'ACTIVE',
+      status,
       theory: hasTheory
         ? {
-            summary: theorySummary.trim() || 'Tóm tắt kiến thức trọng tâm của bài học.',
-            sections: [
-              {
-                heading: 'Kiến thức cốt lõi',
-                formula: theoryFormula.trim() || undefined,
-                points: theorySummary
-                  .split('\n')
-                  .map((l) => l.trim())
-                  .filter(Boolean),
-              },
-            ],
+            summary: theorySummary.trim() || 'Tóm tắt kiến thức trọng tâm.',
+            sections: cleanSections,
           }
         : undefined,
       questions,
@@ -180,7 +283,7 @@ export const HomeworkCreatePage: React.FC = () => {
 
     HomeworkStorageService.saveAssignment(assignment);
     showToast({
-      message: 'Đã lưu bài tập mới!',
+      message: isEditMode ? 'Đã lưu chỉnh sửa bài tập!' : 'Đã tạo bài tập mới!',
       subMessage: `Mã PIN: ${assignment.code}`,
       type: 'success',
     });
@@ -190,7 +293,7 @@ export const HomeworkCreatePage: React.FC = () => {
   return (
     <div className="space-y-6 pb-20 sm:pb-8 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 pb-4 border-b border-slate-200/80 dark:border-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-200/80 dark:border-slate-800">
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
@@ -202,26 +305,37 @@ export const HomeworkCreatePage: React.FC = () => {
           </button>
           <div className="min-w-0">
             <h1 className="text-lg sm:text-2xl font-extrabold text-slate-900 dark:text-white truncate">
-              Tạo Bài Tập Mới
+              {isEditMode ? 'Chỉnh Sửa Bài Tập & Lý Thuyết' : 'Tạo Bài Tập Mới'}
             </h1>
             <p className="text-xs text-slate-500">
-              Mã PIN: <strong className="font-mono text-blue-600 dark:text-blue-400">{code}</strong> •{' '}
-              {questions.length} câu ({totalPoints}đ)
+              Mã PIN: <strong className="font-mono text-brand">{code}</strong> • {questions.length} câu ({totalPoints}đ)
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSave}
-          className="hidden sm:inline-flex px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-glow-blue items-center gap-2 transition shrink-0"
-        >
-          <Save className="w-4 h-4" />
-          <span>Lưu Bài Tập</span>
-        </button>
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          {isEditMode && (
+            <button
+              type="button"
+              onClick={handleDeleteAssignment}
+              className="px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 font-bold text-xs flex items-center gap-1.5"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Xóa bài</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-5 py-2.5 btn-brand font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-2 transition"
+          >
+            <Save className="w-4 h-4" />
+            <span>{isEditMode ? 'Lưu Thay Đổi' : 'Lưu Bài Tập'}</span>
+          </button>
+        </div>
       </div>
 
-      {/* Basic Info & Optional Theory */}
+      {/* Basic Metadata */}
       <section className="surface-card rounded-2xl p-4 sm:p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
           <div className="sm:col-span-6">
@@ -244,7 +358,7 @@ export const HomeworkCreatePage: React.FC = () => {
             <select
               value={levelId}
               onChange={(e) => setLevelId(e.target.value as EducationLevelId)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold"
             >
               {EDUCATION_LEVELS.map((lvl) => (
                 <option key={lvl.id} value={lvl.id}>
@@ -256,7 +370,32 @@ export const HomeworkCreatePage: React.FC = () => {
 
           <div className="sm:col-span-3">
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              Thời gian (phút)
+              Mã PIN
+            </label>
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-sm font-extrabold uppercase"
+            />
+          </div>
+
+          <div className="sm:col-span-6">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Mô tả ngắn (hiển thị ngoài thẻ bài)
+            </label>
+            <input
+              type="text"
+              placeholder="Mô tả ngắn gọn nội dung bài học..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm"
+            />
+          </div>
+
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Thời gian (phút, 0 = tự do)
             </label>
             <input
               type="number"
@@ -264,43 +403,155 @@ export const HomeworkCreatePage: React.FC = () => {
               max="180"
               value={timeLimitMinutes}
               onChange={(e) => setTimeLimitMinutes(Number(e.target.value))}
-              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-semibold"
             />
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 border-t border-slate-100 dark:border-slate-800">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">
-              Công thức / Quy tắc ngắn (tùy chọn)
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Trạng thái
             </label>
-            <input
-              type="text"
-              placeholder="VD: S + V(s/es) | S + do/does + not + V"
-              value={theoryFormula}
-              onChange={(e) => setTheoryFormula(e.target.value)}
-              className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-xs font-semibold"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">
-              Tóm tắt lý thuyết ngắn gọn (tùy chọn)
-            </label>
-            <input
-              type="text"
-              placeholder="Ghi chú ngắn giúp học sinh ôn nhanh trước khi làm..."
-              value={theorySummary}
-              onChange={(e) => setTheorySummary(e.target.value)}
-              className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs"
-            />
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as 'ACTIVE' | 'CLOSED')}
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-bold"
+            >
+              <option value="ACTIVE">Đang mở nhận bài</option>
+              <option value="CLOSED">Đang khóa</option>
+            </select>
           </div>
         </div>
       </section>
 
-      {/* Add Question by Type */}
+      {/* ================= THEORY EDITOR (Collapsible) ================= */}
+      <section className="surface-card rounded-2xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setTheoryOpen(!theoryOpen)}
+          className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition"
+        >
+          <div className="flex items-center gap-2.5">
+            <BookOpenText className="w-5 h-5 text-brand" />
+            <div>
+              <span className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white block">
+                Nội Dung Lý Thuyết ({theorySections.length} mục)
+              </span>
+              <span className="text-xs text-slate-500">
+                Thêm, sửa hoặc xóa công thức, quy tắc, ví dụ &amp; mẹo nhớ của bài học
+              </span>
+            </div>
+          </div>
+          {theoryOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </button>
+
+        {theoryOpen && (
+          <div className="p-4 sm:p-5 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                Tóm tắt tổng quan bài học
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Tóm tắt ngắn gọn học sinh sẽ học được gì..."
+                value={theorySummary}
+                onChange={(e) => setTheorySummary(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm"
+              />
+            </div>
+
+            {theorySections.map((sec, sIdx) => (
+              <div
+                key={sIdx}
+                className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <input
+                    type="text"
+                    value={sec.heading}
+                    placeholder="Tiêu đề mục lý thuyết..."
+                    onChange={(e) =>
+                      updateTheorySection(sIdx, (cur) => ({ ...cur, heading: e.target.value }))
+                    }
+                    className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-extrabold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTheorySection(sIdx)}
+                    className="p-2 rounded-lg text-slate-400 hover:text-rose-600"
+                    title="Xóa mục lý thuyết này"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Công thức nổi bật (tùy chọn, VD: S + V(s/es))..."
+                  value={sec.formula || ''}
+                  onChange={(e) =>
+                    updateTheorySection(sIdx, (cur) => ({ ...cur, formula: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-xs font-bold text-blue-700 dark:text-blue-300"
+                />
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                    Các ý chính (mỗi dòng 1 ý)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={sec.points.join('\n')}
+                    onChange={(e) =>
+                      updateTheorySection(sIdx, (cur) => ({
+                        ...cur,
+                        points: e.target.value.split('\n'),
+                      }))
+                    }
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs leading-relaxed"
+                  />
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Mẹo nhớ nhanh (tùy chọn)..."
+                  value={sec.tip || ''}
+                  onChange={(e) => updateTheorySection(sIdx, (cur) => ({ ...cur, tip: e.target.value }))}
+                  className="w-full px-3 py-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 rounded-xl text-xs font-semibold"
+                />
+              </div>
+            ))}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAddTheorySection}
+                className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-bold inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Thêm mục lý thuyết</span>
+              </button>
+
+              {(theorySummary || theorySections.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTheorySummary('');
+                    setTheorySections([]);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-300 text-xs font-bold"
+                >
+                  Xóa hết lý thuyết
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ================= ADD QUESTION BAR ================= */}
       <section className="surface-card rounded-2xl p-4 sm:p-5 space-y-3">
         <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
-          Chọn dạng bài để thêm câu hỏi
+          Thêm câu hỏi theo dạng bài
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
           {CREATABLE_TYPES.map((typeKey) => {
@@ -321,7 +572,7 @@ export const HomeworkCreatePage: React.FC = () => {
         </div>
       </section>
 
-      {/* Questions List */}
+      {/* ================= QUESTIONS LIST ================= */}
       <section className="space-y-3.5">
         {questions.length === 0 ? (
           <div className="surface-card rounded-3xl border-dashed py-12 px-6 text-center space-y-2">
@@ -332,7 +583,7 @@ export const HomeworkCreatePage: React.FC = () => {
         ) : (
           questions.map((q, idx) => (
             <div key={q.id} className="surface-card rounded-2xl p-4 sm:p-5 space-y-4">
-              <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <span className="w-7 h-7 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-extrabold text-xs flex items-center justify-center shrink-0">
                     {idx + 1}
@@ -340,14 +591,14 @@ export const HomeworkCreatePage: React.FC = () => {
                   <QuestionTypeBadge type={q.type} compact />
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1 text-xs text-slate-500">
+                <div className="flex items-center gap-1">
+                  <label className="flex items-center gap-1 text-xs text-slate-500 mr-1">
                     <span>Điểm:</span>
                     <input
                       type="number"
                       step="0.5"
                       min="0.5"
-                      max="10"
+                      max="20"
                       value={q.points || 1}
                       onChange={(e) =>
                         updateQuestion(idx, (cur) => ({ ...cur, points: Number(e.target.value) }))
@@ -357,8 +608,35 @@ export const HomeworkCreatePage: React.FC = () => {
                   </label>
                   <button
                     type="button"
+                    disabled={idx === 0}
+                    onClick={() => handleMoveQuestion(idx, -1)}
+                    title="Chuyển lên"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white disabled:opacity-30"
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={idx === questions.length - 1}
+                    onClick={() => handleMoveQuestion(idx, 1)}
+                    title="Chuyển xuống"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white disabled:opacity-30"
+                  >
+                    <ArrowDown className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDuplicateQuestion(idx)}
+                    title="Nhân bản câu"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleDeleteQuestion(idx)}
-                    className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                    title="Xóa câu"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -479,7 +757,7 @@ export const HomeworkCreatePage: React.FC = () => {
                           pairs: [...(cur.pairs || []), { left: '', right: '' }],
                         }))
                       }
-                      className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                      className="text-xs font-bold text-brand hover:underline flex items-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" /> Thêm cặp
                     </button>
@@ -512,6 +790,20 @@ export const HomeworkCreatePage: React.FC = () => {
                         }
                         className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-xs font-semibold"
                       />
+                      {q.pairs && q.pairs.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateQuestion(idx, (cur) => ({
+                              ...cur,
+                              pairs: (cur.pairs || []).filter((_, i) => i !== pIdx),
+                            }))
+                          }
+                          className="p-2 text-slate-400 hover:text-rose-500 self-end sm:self-center"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -552,6 +844,18 @@ export const HomeworkCreatePage: React.FC = () => {
                 </div>
               )}
 
+              {q.type === 'READING_COMPREHENSION' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Đoạn văn đọc hiểu</label>
+                  <textarea
+                    rows={5}
+                    value={q.passage || ''}
+                    onChange={(e) => updateQuestion(idx, (cur) => ({ ...cur, passage: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs leading-relaxed"
+                  />
+                </div>
+              )}
+
               {q.type === 'ESSAY' && (
                 <textarea
                   rows={2}
@@ -575,14 +879,23 @@ export const HomeworkCreatePage: React.FC = () => {
       </section>
 
       {/* Mobile Sticky Save Bar */}
-      <div className="sm:hidden fixed bottom-16 inset-x-0 z-30 glass-bar border-t px-4 py-2.5">
+      <div className="sm:hidden fixed bottom-16 inset-x-0 z-30 glass-bar border-t px-4 py-2.5 flex gap-2">
+        {isEditMode && (
+          <button
+            type="button"
+            onClick={handleDeleteAssignment}
+            className="px-3.5 py-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 font-bold text-xs"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
         <button
           type="button"
           onClick={handleSave}
-          className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm rounded-xl shadow-glow-blue flex items-center justify-center gap-2"
+          className="flex-1 py-3 btn-brand font-extrabold text-sm rounded-xl flex items-center justify-center gap-2"
         >
           <Save className="w-4 h-4" />
-          <span>Lưu Bài Tập ({questions.length} câu)</span>
+          <span>{isEditMode ? 'Lưu Thay Đổi' : `Lưu Bài Tập (${questions.length} câu)`}</span>
         </button>
       </div>
     </div>

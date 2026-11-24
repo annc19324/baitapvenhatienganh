@@ -13,6 +13,7 @@ import {
   User,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useSiteConfig } from '../context/SiteConfigContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { HomeworkStorageService } from '../services/homeworkStorage';
@@ -26,6 +27,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const { config } = useSiteConfig();
   const { isAdmin, adminUsername, studentName } = useAuth();
   const { showToast } = useToast();
 
@@ -35,7 +37,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
   const isDoPage = location.pathname.startsWith('/homework/do');
   const isHome = location.pathname === '/homework' || location.pathname === '/';
-  const isCreate = location.pathname.startsWith('/homework/create');
+  const isCreate =
+    location.pathname.startsWith('/homework/create') ||
+    location.pathname.startsWith('/homework/edit');
   const isAdminPage = location.pathname.startsWith('/admin');
 
   const handleQuickJoin = (e: React.FormEvent) => {
@@ -59,27 +63,80 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     navigate(`/homework/do/${found.code}`);
   };
 
+  // Compute dynamic page background style from Admin SiteConfig
+  const getBackgroundStyle = (): React.CSSProperties => {
+    if (config.backgroundMode === 'solid') {
+      return {
+        backgroundColor: theme === 'dark' ? config.backgroundColorDark : config.backgroundColorLight,
+      };
+    }
+    if (config.backgroundMode === 'gradient') {
+      return {
+        backgroundImage: config.backgroundGradient,
+        backgroundAttachment: 'fixed',
+      };
+    }
+    if (config.backgroundMode === 'image' && config.backgroundImageUrl) {
+      return {
+        backgroundImage: `url("${config.backgroundImageUrl}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+      };
+    }
+    return {};
+  };
+
+  const hasBgImage = config.backgroundMode === 'image' && Boolean(config.backgroundImageUrl);
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#F6F8FB] dark:bg-[#0B1120]">
+    <div
+      style={getBackgroundStyle()}
+      className="min-h-screen flex flex-col bg-[#F6F8FB] dark:bg-[#0B1120] relative transition-colors duration-300"
+    >
+      {/* Background Image Readability Overlay */}
+      {hasBgImage && (
+        <div
+          className="fixed inset-0 pointer-events-none z-0 transition-opacity"
+          style={{
+            backgroundColor:
+              theme === 'dark'
+                ? `rgba(11, 17, 32, ${Math.min(0.9, config.backgroundOverlayOpacity + 0.2)})`
+                : `rgba(248, 250, 252, ${config.backgroundOverlayOpacity})`,
+          }}
+        />
+      )}
+
       {/* ================= ADAPTIVE TOP BAR ================= */}
       <header className="sticky top-0 z-40 h-14 sm:h-16 glass-bar border-b pt-safe">
         <div className="max-w-6xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-3">
-          {/* Brand */}
+          {/* Dynamic Brand & Logo */}
           <button
             type="button"
             onClick={() => navigate('/homework')}
-            className="flex items-center gap-2.5 group shrink-0"
+            className="flex items-center gap-2.5 group shrink-0 min-w-0"
           >
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition">
-              <GraduationCap className="w-5 h-5" />
-            </div>
-            <div className="text-left">
-              <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white block leading-none">
-                EngWork A–Z
+            {config.logoMode === 'image' && config.logoImageUrl ? (
+              <img
+                src={config.logoImageUrl}
+                alt={config.brandName}
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm shrink-0"
+              />
+            ) : config.logoMode === 'icon' ? (
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-brand-gradient text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition shrink-0">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+            ) : null}
+
+            <div className="text-left min-w-0">
+              <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white block leading-none truncate">
+                {config.brandName || 'EngWork'}
               </span>
-              <span className="text-[10px] font-semibold text-slate-400">
-                {isDoPage ? 'Chế độ làm bài' : 'Mầm non → Đại học'}
-              </span>
+              {(isDoPage || config.brandSubtitle) && (
+                <span className="text-[10px] font-semibold text-slate-400 block truncate mt-0.5">
+                  {isDoPage ? 'Chế độ làm bài' : config.brandSubtitle}
+                </span>
+              )}
             </div>
           </button>
 
@@ -92,7 +149,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   onClick={() => navigate('/homework')}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
                     isHome
-                      ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300'
+                      ? 'bg-slate-900/10 dark:bg-white/10 text-slate-900 dark:text-white'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
@@ -108,7 +165,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                       className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
                         isCreate
                           ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                          : 'btn-brand shadow-sm'
                       }`}
                     >
                       <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -131,22 +188,20 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                 )}
               </nav>
 
-              {/* Saved Student Pill (Desktop) */}
               {!isAdmin && studentName && (
                 <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200">
-                  <User className="w-3.5 h-3.5 text-blue-600" />
+                  <User className="w-3.5 h-3.5 text-brand" />
                   <span className="max-w-[140px] truncate">{studentName}</span>
                 </span>
               )}
 
-              {/* Admin Login trigger (when not logged in) */}
               {!isAdmin && (
                 <button
                   type="button"
                   onClick={() => setAdminLoginOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100/90 dark:bg-slate-800/90 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-brand" />
                   <span>Admin</span>
                 </button>
               )}
@@ -191,7 +246,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       </header>
 
       {/* ================= MAIN CONTENT ================= */}
-      <main className="flex-1 w-full">
+      <main className="flex-1 w-full relative z-10">
         <div
           className={`max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 ${
             !isDoPage ? 'pb-24 sm:pb-12' : 'pb-24 lg:pb-12'
@@ -209,7 +264,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               type="button"
               onClick={() => navigate('/homework')}
               className={`flex flex-col items-center justify-center gap-1 transition ${
-                isHome ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+                isHome ? 'text-brand' : 'text-slate-500 dark:text-slate-400'
               }`}
             >
               <BookOpen className="w-5 h-5" />
@@ -227,14 +282,12 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                     className={`w-11 h-8 rounded-xl flex items-center justify-center shadow-sm ${
                       isCreate
                         ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
-                        : 'bg-blue-600 text-white'
+                        : 'btn-brand'
                     }`}
                   >
                     <Plus className="w-5 h-5 stroke-[2.5]" />
                   </span>
-                  <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
-                    Tạo bài
-                  </span>
+                  <span className="text-[11px] font-bold text-brand">Tạo bài</span>
                 </button>
 
                 <button
@@ -255,12 +308,10 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   onClick={() => setPinModalOpen(true)}
                   className="flex flex-col items-center justify-center gap-0.5"
                 >
-                  <span className="w-11 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-sm">
+                  <span className="w-11 h-8 rounded-xl btn-brand flex items-center justify-center shadow-sm">
                     <KeyRound className="w-4.5 h-4.5" />
                   </span>
-                  <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">
-                    Nhập mã
-                  </span>
+                  <span className="text-[11px] font-bold text-brand">Nhập mã</span>
                 </button>
 
                 <button
@@ -312,7 +363,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               />
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm shadow-glow-emerald flex items-center justify-center gap-2 transition"
+                className="w-full py-3.5 rounded-2xl btn-brand font-extrabold text-sm shadow-sm flex items-center justify-center gap-2 transition"
               >
                 <span>Vào Làm Bài</span>
                 <ArrowRight className="w-4 h-4" />

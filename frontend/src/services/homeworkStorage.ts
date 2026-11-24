@@ -242,6 +242,43 @@ export class HomeworkStorageService {
     return false;
   }
 
+  static renameStudent(oldName: string, newName: string): number {
+    const cleanOld = oldName.trim().toLowerCase();
+    const cleanNew = newName.trim();
+    if (!cleanOld || !cleanNew) return 0;
+    const all = this.getSubmissions();
+    let count = 0;
+    const updated = all.map((s) => {
+      if (s.studentName.trim().toLowerCase() === cleanOld) {
+        count++;
+        return { ...s, studentName: cleanNew };
+      }
+      return s;
+    });
+    if (count > 0) {
+      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(updated));
+    }
+    return count;
+  }
+
+  static deleteStudentData(studentName: string): number {
+    const clean = studentName.trim().toLowerCase();
+    const all = this.getSubmissions();
+    const filtered = all.filter((s) => s.studentName.trim().toLowerCase() !== clean);
+    const removed = all.length - filtered.length;
+    if (removed > 0) {
+      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(filtered));
+    }
+    return removed;
+  }
+
+  static restoreDefaultCurriculum(): void {
+    const existing = this.getAssignments();
+    const customOnes = existing.filter((a) => !a.id.startsWith('seed-hw-'));
+    const seeded = buildSeededAssignments();
+    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify([...customOnes, ...seeded]));
+  }
+
   static getStudentSummaries(): StudentSummary[] {
     const submissions = this.getSubmissions();
     const map = new Map<string, HomeworkSubmission[]>();

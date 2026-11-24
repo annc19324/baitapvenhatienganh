@@ -14,6 +14,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/" element={<Navigate to="/homework" replace />} />
         <Route path="/homework" element={<HomeworkHubPage />} />
         <Route path="/homework/create" element={<HomeworkCreatePage />} />
+        <Route path="/homework/edit/:id" element={<HomeworkCreatePage />} />
         <Route path="/homework/do/:codeOrId" element={<HomeworkDoPage />} />
         <Route path="/homework/result/:submissionId" element={<HomeworkResultPage />} />
         <Route path="/admin" element={<AdminDashboardPage />} />

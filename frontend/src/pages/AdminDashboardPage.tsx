@@ -20,25 +20,33 @@ import {
   Play,
   ClipboardCheck,
   User as UserIcon,
+  Palette,
+  Pencil,
+  RotateCcw,
+  Save,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { HomeworkStorageService, StudentSummary } from '../services/homeworkStorage';
 import { HomeworkAssignment, HomeworkSubmission, EducationLevelId } from '../types/homework';
 import { EDUCATION_LEVELS, EducationLevelBadge } from '../components/EducationLevelBadge';
+import { AppearanceManager } from '../components/AppearanceManager';
+
+type AdminTab = 'students' | 'submissions' | 'assignments' | 'appearance';
 
 export const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { isAdmin, adminUsername, loginAdmin, logoutAdmin } = useAuth();
   const { showToast, copyAndNotify } = useToast();
 
-  // Inline login state when not authenticated
+  // Inline login state
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginErr, setLoginErr] = useState('');
 
-  // Dashboard data
-  const [activeTab, setActiveTab] = useState<'students' | 'submissions' | 'assignments'>('students');
+  // Dashboard state
+  const [activeTab, setActiveTab] = useState<AdminTab>('students');
   const [assignments, setAssignments] = useState<HomeworkAssignment[]>([]);
   const [submissions, setSubmissions] = useState<HomeworkSubmission[]>([]);
   const [studentSummaries, setStudentSummaries] = useState<StudentSummary[]>([]);
@@ -49,6 +57,17 @@ export const AdminDashboardPage: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState<EducationLevelId | 'ALL'>('ALL');
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
 
+  // Edit Submission Modal state
+  const [editingSub, setEditingSub] = useState<HomeworkSubmission | null>(null);
+  const [editSubName, setEditSubName] = useState('');
+  const [editSubScore, setEditSubScore] = useState(0);
+
+  // Add Manual Score Modal state
+  const [showAddSubModal, setShowAddSubModal] = useState(false);
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubAssignId, setNewSubAssignId] = useState('');
+  const [newSubScore, setNewSubScore] = useState(8);
+
   useEffect(() => {
     if (isAdmin) {
       loadData();
@@ -56,9 +75,13 @@ export const AdminDashboardPage: React.FC = () => {
   }, [isAdmin]);
 
   const loadData = () => {
-    setAssignments(HomeworkStorageService.getAssignments());
+    const assigns = HomeworkStorageService.getAssignments();
+    setAssignments(assigns);
     setSubmissions(HomeworkStorageService.getSubmissions());
     setStudentSummaries(HomeworkStorageService.getStudentSummaries());
+    if (!newSubAssignId && assigns.length > 0) {
+      setNewSubAssignId(assigns[0].id);
+    }
   };
 
   const handleInlineLogin = (e: React.FormEvent) => {
@@ -78,6 +101,83 @@ export const AdminDashboardPage: React.FC = () => {
     logoutAdmin();
     showToast({ message: 'Đã đăng xuất tài khoản Admin', type: 'info' });
     navigate('/homework');
+  };
+
+  const handleRenameStudent = (oldName: string) => {
+    const nextName = window.prompt(`Nhập tên mới thay cho "${oldName}":`, oldName);
+    if (!nextName || !nextName.trim() || nextName.trim() === oldName) return;
+    const updatedCount = HomeworkStorageService.renameStudent(oldName, nextName);
+    if (updatedCount > 0) {
+      loadData();
+      setExpandedStudent(nextName.trim());
+      showToast({
+        message: `Đã đổi tên thành "${nextName.trim()}"`,
+        subMessage: `Cập nhật ${updatedCount} lượt nộp bài.`,
+        type: 'success',
+      });
+    }
+  };
+
+  const handleDeleteStudent = (name: string) => {
+    if (window.confirm(`Xóa toàn bộ dữ liệu và lịch sử điểm thi của "${name}"?`)) {
+      const removed = HomeworkStorageService.deleteStudentData(name);
+      loadData();
+      showToast({ message: `Đã xóa ${removed} lượt nộp bài của ${name}`, type: 'success' });
+    }
+  };
+
+  const handleOpenEditSubmission = (sub: HomeworkSubmission) => {
+    setEditingSub(sub);
+    setEditSubName(sub.studentName);
+    setEditSubScore(sub.totalScore);
+  };
+
+  const handleSaveEditSubmission = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSub || !editSubName.trim()) return;
+    const clampedScore = Math.max(0, Math.min(editingSub.maxTotalScore, Number(editSubScore) || 0));
+    const percentage = Math.round((clampedScore / (editingSub.maxTotalScore || 10)) * 100);
+    HomeworkStorageService.saveSubmission({
+      ...editingSub,
+      studentName: editSubName.trim(),
+      totalScore: Number(clampedScore.toFixed(1)),
+      percentage,
+      isReviewedByTeacher: true,
+    });
+    setEditingSub(null);
+    loadData();
+    showToast({ message: 'Đã cập nhật điểm & thông tin bài nộp', type: 'success' });
+  };
+
+  const handleAddManualSubmission = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetAssign = assignments.find((a) => a.id === newSubAssignId);
+    if (!newSubName.trim() || !targetAssign) {
+      showToast({ message: 'Vui lòng nhập tên và chọn bài tập', type: 'error' });
+      return;
+    }
+    const maxScore = targetAssign.totalPoints || 10;
+    const score = Math.max(0, Math.min(maxScore, Number(newSubScore) || 0));
+    const sub: HomeworkSubmission = {
+      id: `sub-admin-${Date.now()}`,
+      assignmentId: targetAssign.id,
+      assignmentCode: targetAssign.code,
+      assignmentTitle: targetAssign.title,
+      studentName: newSubName.trim(),
+      answers: {},
+      scores: {},
+      totalScore: Number(score.toFixed(1)),
+      maxTotalScore: maxScore,
+      percentage: Math.round((score / maxScore) * 100),
+      timeSpentSeconds: 0,
+      submittedAt: new Date().toISOString(),
+      isReviewedByTeacher: true,
+    };
+    HomeworkStorageService.saveSubmission(sub);
+    setShowAddSubModal(false);
+    setNewSubName('');
+    loadData();
+    showToast({ message: 'Đã thêm điểm thi mới thành công!', type: 'success' });
   };
 
   const handleDeleteSubmission = (subId: string, studentName: string) => {
@@ -104,6 +204,14 @@ export const AdminDashboardPage: React.FC = () => {
       message: nextStatus === 'ACTIVE' ? 'Đã mở lại bài tập' : 'Đã khóa bài tập',
       type: 'info',
     });
+  };
+
+  const handleRestoreDefaults = () => {
+    if (window.confirm('Khôi phục lại 12 bài học & bài tập mẫu A–Z mặc định (giữ nguyên các bài bạn tự tạo)?')) {
+      HomeworkStorageService.restoreDefaultCurriculum();
+      loadData();
+      showToast({ message: 'Đã khôi phục bộ bài tập A–Z mặc định!', type: 'success' });
+    }
   };
 
   const handleExportCsv = () => {
@@ -155,20 +263,19 @@ export const AdminDashboardPage: React.FC = () => {
     });
   }, [assignments, searchQuery, selectedLevel]);
 
-  // Not authenticated view
   if (!isAdmin) {
     return (
       <div className="max-w-md mx-auto py-8 sm:py-14 animate-slide-up">
         <div className="surface-card rounded-3xl p-6 sm:p-8 shadow-elevated space-y-5">
           <div className="text-center space-y-2">
-            <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto border border-blue-200 dark:border-blue-800">
+            <div className="w-14 h-14 rounded-2xl bg-brand-gradient text-white flex items-center justify-center mx-auto shadow-sm">
               <ShieldCheck className="w-7 h-7" />
             </div>
             <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">
               Khu Vực Quản Trị (Admin)
             </h1>
             <p className="text-xs sm:text-sm text-slate-500">
-              Đăng nhập tài khoản Admin để quản lý bài tập và xem điểm thi của người làm bài.
+              Đăng nhập để quản lý toàn bộ dữ liệu, điểm thi, bài tập, logo &amp; giao diện.
             </p>
           </div>
 
@@ -210,7 +317,7 @@ export const AdminDashboardPage: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm rounded-2xl shadow-glow-blue transition"
+              className="w-full py-3.5 btn-brand font-extrabold text-sm rounded-2xl transition"
             >
               Đăng Nhập Admin
             </button>
@@ -225,20 +332,20 @@ export const AdminDashboardPage: React.FC = () => {
       {/* ================= ADMIN HEADER ================= */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center shadow-glow-blue shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-brand-gradient text-white flex items-center justify-center shadow-sm shrink-0">
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
-                Quản Trị Hệ Thống
+                Quản Trị Toàn Hệ Thống
               </h1>
-              <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-mono text-[11px] font-bold">
+              <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950 text-brand font-mono text-[11px] font-bold">
                 {adminUsername}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500">
-              Theo dõi người làm bài, tra cứu điểm thi chi tiết và quản lý bộ đề
+              Thêm, sửa, xóa bài tập, điểm thi, học sinh, logo, màu sắc &amp; hình nền
             </p>
           </div>
         </div>
@@ -247,7 +354,7 @@ export const AdminDashboardPage: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('/homework/create')}
-            className="flex-1 sm:flex-none px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-glow-blue flex items-center justify-center gap-1.5 transition"
+            className="flex-1 sm:flex-none px-4 py-2.5 btn-brand font-extrabold text-xs rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition"
           >
             <Plus className="w-4 h-4" />
             <span>Tạo bài tập</span>
@@ -255,21 +362,30 @@ export const AdminDashboardPage: React.FC = () => {
 
           <button
             type="button"
+            onClick={() => setShowAddSubModal(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5 text-teal-600" />
+            <span>Thêm điểm</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleExportCsv}
             disabled={submissions.length === 0}
-            className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+            className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 disabled:opacity-40"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Xuất CSV</span>
+            <span>CSV</span>
           </button>
 
           <button
             type="button"
             onClick={handleLogout}
-            className="px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 text-xs font-bold flex items-center gap-1.5 hover:bg-rose-100 dark:hover:bg-rose-950 transition"
+            className="px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 text-xs font-bold flex items-center gap-1.5"
           >
             <LogOut className="w-4 h-4" />
-            <span>Đăng xuất</span>
+            <span>Thoát</span>
           </button>
         </div>
       </div>
@@ -328,88 +444,88 @@ export const AdminDashboardPage: React.FC = () => {
       {/* ================= TABS & SEARCH ================= */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex items-center gap-1 bg-slate-200/70 dark:bg-slate-800/80 p-1 rounded-2xl overflow-x-auto no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setActiveTab('students')}
-            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition ${
-              activeTab === 'students'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            Học sinh ({studentSummaries.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('submissions')}
-            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition ${
-              activeTab === 'submissions'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            Điểm thi ({submissions.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('assignments')}
-            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition ${
-              activeTab === 'assignments'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            Bài tập ({assignments.length})
-          </button>
+          {(
+            [
+              { id: 'students', label: `Học sinh (${studentSummaries.length})` },
+              { id: 'submissions', label: `Điểm thi (${submissions.length})` },
+              { id: 'assignments', label: `Bài tập (${assignments.length})` },
+              { id: 'appearance', label: 'Logo & Giao diện', icon: Palette },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={`px-3.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition flex items-center gap-1.5 ${
+                activeTab === t.id
+                  ? 'bg-white dark:bg-slate-900 text-brand shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              {'icon' in t && <Palette className="w-3.5 h-3.5" />}
+              <span>{t.label}</span>
+            </button>
+          ))}
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1 sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Tìm tên học sinh, bài tập..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+        {activeTab !== 'appearance' && (
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1 sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Tìm tên học sinh, bài tập..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 surface-card rounded-xl text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {activeTab === 'submissions' && (
+              <select
+                value={selectedAssignmentId}
+                onChange={(e) => setSelectedAssignmentId(e.target.value)}
+                className="px-3.5 py-2.5 surface-card rounded-xl text-xs font-bold"
+              >
+                <option value="ALL">Tất cả bài tập</option>
+                {assignments.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.code} — {a.title.slice(0, 35)}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {activeTab === 'assignments' && (
+              <div className="flex gap-2">
+                <select
+                  value={selectedLevel}
+                  onChange={(e) => setSelectedLevel(e.target.value as EducationLevelId | 'ALL')}
+                  className="flex-1 px-3.5 py-2.5 surface-card rounded-xl text-xs font-bold"
+                >
+                  <option value="ALL">Mọi trình độ</option>
+                  {EDUCATION_LEVELS.map((lvl) => (
+                    <option key={lvl.id} value={lvl.id}>
+                      {lvl.emoji} {lvl.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleRestoreDefaults}
+                  title="Khôi phục 12 bài A-Z mặc định"
+                  className="px-3 py-2.5 surface-card rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-brand flex items-center gap-1 shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Khôi phục mẫu</span>
+                </button>
+              </div>
+            )}
           </div>
-
-          {activeTab === 'submissions' && (
-            <select
-              value={selectedAssignmentId}
-              onChange={(e) => setSelectedAssignmentId(e.target.value)}
-              className="px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="ALL">Tất cả bài tập</option>
-              {assignments.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.code} — {a.title.slice(0, 35)}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {activeTab === 'assignments' && (
-            <select
-              value={selectedLevel}
-              onChange={(e) => setSelectedLevel(e.target.value as EducationLevelId | 'ALL')}
-              className="px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="ALL">Mọi trình độ</option>
-              {EDUCATION_LEVELS.map((lvl) => (
-                <option key={lvl.id} value={lvl.id}>
-                  {lvl.emoji} {lvl.label}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* ================= TAB 1: STUDENTS PROFILES & SCORES ================= */}
+      {/* ================= TAB 1: STUDENTS ================= */}
       {activeTab === 'students' && (
         <div className="space-y-3">
           {filteredStudents.length === 0 ? (
@@ -421,13 +537,13 @@ export const AdminDashboardPage: React.FC = () => {
               const isOpen = expandedStudent === stu.studentName;
               return (
                 <div key={stu.studentName} className="surface-card rounded-2xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedStudent(isOpen ? null : stu.studentName)}
-                    className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center font-extrabold text-sm shrink-0">
+                  <div className="p-4 sm:p-5 flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedStudent(isOpen ? null : stu.studentName)}
+                      className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/70 text-brand flex items-center justify-center font-extrabold text-sm shrink-0">
                         <UserIcon className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
@@ -435,41 +551,43 @@ export const AdminDashboardPage: React.FC = () => {
                           {stu.studentName}
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          {stu.attemptCount} lượt làm • {stu.uniqueAssignments} bài khác nhau • Gần nhất:{' '}
-                          {new Date(stu.latestSubmittedAt).toLocaleDateString('vi-VN')}
+                          {stu.attemptCount} lượt làm • TB: <strong>{stu.averagePercentage}%</strong> • Cao nhất:{' '}
+                          <strong>{stu.highestPercentage}%</strong>
                         </p>
                       </div>
-                    </div>
+                    </button>
 
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="text-right">
-                        <span
-                          className={`inline-block px-2.5 py-1 rounded-full text-xs font-extrabold ${
-                            stu.averagePercentage >= 80
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                              : stu.averagePercentage >= 50
-                              ? 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-                              : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                          }`}
-                        >
-                          TB: {stu.averagePercentage}%
-                        </span>
-                        <span className="block text-[10px] text-slate-400 font-semibold mt-0.5">
-                          Cao nhất: {stu.highestPercentage}%
-                        </span>
-                      </div>
-                      {isOpen ? (
-                        <ChevronUp className="w-4 h-4 text-slate-400" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-slate-400" />
-                      )}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleRenameStudent(stu.studentName)}
+                        title="Đổi tên học sinh"
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-brand"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteStudent(stu.studentName)}
+                        title="Xóa toàn bộ dữ liệu học sinh này"
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-rose-600"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedStudent(isOpen ? null : stu.studentName)}
+                        className="p-2 rounded-xl text-slate-400"
+                      >
+                        {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
                     </div>
-                  </button>
+                  </div>
 
                   {isOpen && (
                     <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-4 space-y-2.5">
                       <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-                        Lịch sử điểm thi của {stu.studentName}
+                        Chi tiết điểm thi của {stu.studentName}
                       </p>
                       {stu.submissions.map((sub) => (
                         <div
@@ -478,7 +596,7 @@ export const AdminDashboardPage: React.FC = () => {
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
+                              <span className="font-mono font-bold text-xs text-brand">
                                 {sub.assignmentCode}
                               </span>
                               <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
@@ -486,28 +604,32 @@ export const AdminDashboardPage: React.FC = () => {
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                              {new Date(sub.submittedAt).toLocaleString('vi-VN')} • Làm trong{' '}
-                              {Math.floor(sub.timeSpentSeconds / 60)}p {sub.timeSpentSeconds % 60}s
+                              {new Date(sub.submittedAt).toLocaleString('vi-VN')}
                             </p>
                           </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0">
+                          <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
                             <span className="font-extrabold text-sm text-slate-900 dark:text-white">
                               {sub.totalScore}/{sub.maxTotalScore}đ ({sub.percentage}%)
                             </span>
                             <button
                               type="button"
-                              onClick={() => navigate(`/homework/result/${sub.id}`)}
-                              className="px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center gap-1"
+                              onClick={() => handleOpenEditSubmission(sub)}
+                              className="px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-bold text-xs inline-flex items-center gap-1"
                             >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>Chi tiết</span>
+                              <Pencil className="w-3 h-3" /> Sửa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/homework/result/${sub.id}`)}
+                              className="px-2.5 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold text-xs inline-flex items-center gap-1"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Xem
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteSubmission(sub.id, sub.studentName)}
-                              aria-label="Xóa lượt nộp"
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -523,7 +645,7 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* ================= TAB 2: ALL SUBMISSIONS ================= */}
+      {/* ================= TAB 2: SUBMISSIONS ================= */}
       {activeTab === 'submissions' && (
         <div>
           {filteredSubmissions.length === 0 ? (
@@ -532,15 +654,12 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Mobile Cards (< md) */}
               <div className="md:hidden space-y-3">
                 {filteredSubmissions.map((sub) => (
                   <div key={sub.id} className="surface-card rounded-2xl p-4 space-y-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="font-extrabold text-sm text-slate-900 dark:text-white">
-                          {sub.studentName}
-                        </p>
+                        <p className="font-extrabold text-sm text-slate-900 dark:text-white">{sub.studentName}</p>
                         <p className="text-xs text-slate-500 line-clamp-1">
                           {sub.assignmentCode} • {sub.assignmentTitle}
                         </p>
@@ -549,23 +668,28 @@ export const AdminDashboardPage: React.FC = () => {
                         <span className="font-extrabold text-sm text-slate-900 dark:text-white block">
                           {sub.totalScore}/{sub.maxTotalScore}
                         </span>
-                        <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
-                          {sub.percentage}%
-                        </span>
+                        <span className="text-[11px] font-bold text-brand">{sub.percentage}%</span>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
                       <span className="text-[11px] text-slate-400">
-                        {new Date(sub.submittedAt).toLocaleString('vi-VN')}
+                        {new Date(sub.submittedAt).toLocaleDateString('vi-VN')}
                       </span>
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => navigate(`/homework/result/${sub.id}`)}
-                          className="px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-xs font-bold"
+                          onClick={() => handleOpenEditSubmission(sub)}
+                          className="px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-xs font-bold"
                         >
-                          Xem bài
+                          Sửa điểm
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/homework/result/${sub.id}`)}
+                          className="px-2.5 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-xs font-bold"
+                        >
+                          Xem
                         </button>
                         <button
                           type="button"
@@ -580,7 +704,6 @@ export const AdminDashboardPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* Desktop Table (md+) */}
               <div className="hidden md:block surface-card rounded-3xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
@@ -601,7 +724,7 @@ export const AdminDashboardPage: React.FC = () => {
                             {sub.studentName}
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400 mr-1.5">
+                            <span className="font-mono font-bold text-xs text-brand mr-1.5">
                               {sub.assignmentCode}
                             </span>
                             <span className="text-slate-700 dark:text-slate-200">{sub.assignmentTitle}</span>
@@ -629,15 +752,22 @@ export const AdminDashboardPage: React.FC = () => {
                             <div className="inline-flex items-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => navigate(`/homework/result/${sub.id}`)}
-                                className="px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100"
+                                onClick={() => handleOpenEditSubmission(sub)}
+                                className="px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-xs font-bold"
                               >
-                                Xem bài
+                                Sửa
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/homework/result/${sub.id}`)}
+                                className="px-2.5 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-bold"
+                              >
+                                Xem
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSubmission(sub.id, sub.studentName)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -654,17 +784,20 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* ================= TAB 3: MANAGE ASSIGNMENTS ================= */}
+      {/* ================= TAB 3: ASSIGNMENTS (FULL CRUD) ================= */}
       {activeTab === 'assignments' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredAssignments.map((assign) => {
             const subCount = submissions.filter((s) => s.assignmentId === assign.id).length;
             return (
-              <div key={assign.id} className="surface-card rounded-2xl p-4 sm:p-5 space-y-3 flex flex-col justify-between">
+              <div
+                key={assign.id}
+                className="surface-card rounded-2xl p-4 sm:p-5 space-y-3 flex flex-col justify-between"
+              >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-mono font-extrabold text-xs">
+                      <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950 text-brand font-mono font-extrabold text-xs">
                         {assign.code}
                       </span>
                       <EducationLevelBadge levelId={assign.levelId} />
@@ -687,15 +820,24 @@ export const AdminDashboardPage: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
+                      onClick={() => navigate(`/homework/edit/${assign.id}`)}
+                      className="px-3 py-1.5 rounded-xl btn-brand text-xs font-bold flex items-center gap-1"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Sửa bài</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => navigate(`/homework/do/${assign.code}`)}
-                      className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1"
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1"
                     >
                       <Play className="w-3.5 h-3.5" />
-                      <span>Mở bài</span>
+                      <span>Mở</span>
                     </button>
 
                     <button
@@ -735,6 +877,155 @@ export const AdminDashboardPage: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ================= TAB 4: LOGO, COLORS & BACKGROUND ================= */}
+      {activeTab === 'appearance' && <AppearanceManager />}
+
+      {/* ================= EDIT SUBMISSION MODAL ================= */}
+      {editingSub && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setEditingSub(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-elevated animate-sheet-up sm:animate-slide-up pb-safe relative"
+          >
+            <button
+              type="button"
+              onClick={() => setEditingSub(null)}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+              Sửa Điểm &amp; Thông Tin Bài Nộp
+            </h3>
+
+            <form onSubmit={handleSaveEditSubmission} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Tên người làm bài
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editSubName}
+                  onChange={(e) => setEditSubName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Điểm số (tối đa {editingSub.maxTotalScore}đ)
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max={editingSub.maxTotalScore}
+                  required
+                  value={editSubScore}
+                  onChange={(e) => setEditSubScore(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-extrabold"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 btn-brand font-extrabold text-sm rounded-xl flex items-center justify-center gap-1.5"
+              >
+                <Save className="w-4 h-4" />
+                <span>Lưu Thay Đổi</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= ADD MANUAL SUBMISSION MODAL ================= */}
+      {showAddSubModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setShowAddSubModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-elevated animate-sheet-up sm:animate-slide-up pb-safe relative"
+          >
+            <button
+              type="button"
+              onClick={() => setShowAddSubModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+              Thêm Điểm Thi Thủ Công
+            </h3>
+
+            <form onSubmit={handleAddManualSubmission} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Tên học sinh
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Nhập họ và tên..."
+                  value={newSubName}
+                  onChange={(e) => setNewSubName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Bài tập
+                </label>
+                <select
+                  value={newSubAssignId}
+                  onChange={(e) => setNewSubAssignId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
+                >
+                  {assignments.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.code} — {a.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Điểm đạt được
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max={assignments.find((a) => a.id === newSubAssignId)?.totalPoints || 10}
+                  required
+                  value={newSubScore}
+                  onChange={(e) => setNewSubScore(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-sm font-extrabold"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 btn-brand font-extrabold text-sm rounded-xl flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Lưu Điểm Mới</span>
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>
