@@ -66,27 +66,42 @@ export const HomeworkCreatePage: React.FC = () => {
   // Quick-Paste state
   const [quickPasteOpen, setQuickPasteOpen] = useState(false);
   const [quickPasteText, setQuickPasteText] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!editId) return;
-    const found = HomeworkStorageService.getAssignment(editId);
-    if (!found) {
-      showToast({ message: 'Không tìm thấy bài tập để sửa', type: 'error' });
-      navigate('/admin');
-      return;
-    }
-    setExistingAssignment(found);
-    setTitle(found.title);
-    setDescription(found.description || '');
-    setCode(found.code);
-    setLevelId(found.levelId || 'THCS');
-    setTimeLimitMinutes(found.timeLimitMinutes);
-    setStatus(found.status === 'CLOSED' ? 'CLOSED' : 'ACTIVE');
-    setQuestions(JSON.parse(JSON.stringify(found.questions)));
-    if (found.theory) {
-      setTheorySummary(found.theory.summary || '');
-      setTheorySections(JSON.parse(JSON.stringify(found.theory.sections || [])));
-    }
+    let cancelled = false;
+
+    const loadForEdit = async () => {
+      let found = HomeworkStorageService.getAssignment(editId);
+      if (!found) {
+        await HomeworkStorageService.syncFromBackend(true);
+        if (cancelled) return;
+        found = HomeworkStorageService.getAssignment(editId);
+      }
+      if (!found) {
+        showToast({ message: 'Không tìm thấy bài tập để sửa', type: 'error' });
+        navigate('/admin');
+        return;
+      }
+      setExistingAssignment(found);
+      setTitle(found.title);
+      setDescription(found.description || '');
+      setCode(found.code);
+      setLevelId(found.levelId || 'THCS');
+      setTimeLimitMinutes(found.timeLimitMinutes);
+      setStatus(found.status === 'CLOSED' ? 'CLOSED' : 'ACTIVE');
+      setQuestions(JSON.parse(JSON.stringify(found.questions)));
+      if (found.theory) {
+        setTheorySummary(found.theory.summary || '');
+        setTheorySections(JSON.parse(JSON.stringify(found.theory.sections || [])));
+      }
+    };
+
+    loadForEdit();
+    return () => {
+      cancelled = true;
+    };
   }, [editId]);
 
   if (!isAdmin) {
@@ -243,16 +258,19 @@ export const HomeworkCreatePage: React.FC = () => {
     setQuestions((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleDeleteAssignment = () => {
-    if (!existingAssignment) return;
+  const handleDeleteAssignment = async () => {
+    if (!existingAssignment || isSaving) return;
     if (window.confirm(`Xóa vĩnh viễn bài tập "${existingAssignment.title}"?`)) {
-      HomeworkStorageService.deleteAssignment(existingAssignment.id);
+      setIsSaving(true);
+      await HomeworkStorageService.deleteAssignmentAsync(existingAssignment.id);
+      setIsSaving(false);
       showToast({ message: 'Đã xóa bài tập', type: 'success' });
       navigate('/admin');
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return;
     if (!title.trim()) {
       showToast({ message: 'Vui lòng nhập tên bài tập', type: 'error' });
       return;
@@ -309,11 +327,15 @@ export const HomeworkCreatePage: React.FC = () => {
       totalPoints,
     };
 
-    HomeworkStorageService.saveAssignment(assignment);
+    setIsSaving(true);
+    const { synced } = await HomeworkStorageService.saveAssignmentAsync(assignment);
+    setIsSaving(false);
     showToast({
       message: isEditMode ? 'Đã lưu chỉnh sửa bài tập!' : 'Đã tạo bài tập mới!',
-      subMessage: `Mã PIN: ${assignment.code}`,
-      type: 'success',
+      subMessage: synced
+        ? `Mã PIN: ${assignment.code} • Đã đồng bộ lên máy chủ`
+        : `Mã PIN: ${assignment.code} • Lưu tạm trên máy (máy chủ đang khởi động)`,
+      type: synced ? 'success' : 'info',
     });
     navigate('/admin');
   };
@@ -354,11 +376,12 @@ export const HomeworkCreatePage: React.FC = () => {
           )}
           <button
             type="button"
+            disabled={isSaving}
             onClick={handleSave}
-            className="px-5 py-2.5 btn-brand font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-2 transition"
+            className="px-5 py-2.5 btn-brand font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-2 transition disabled:opacity-60"
           >
             <Save className="w-4 h-4" />
-            <span>{isEditMode ? 'Lưu Thay Đổi' : 'Lưu Bài Tập'}</span>
+            <span>{isSaving ? 'Đang lưu...' : isEditMode ? 'Lưu Thay Đổi' : 'Lưu Bài Tập'}</span>
           </button>
         </div>
       </div>
@@ -1013,11 +1036,12 @@ Break down :: Hỏng hóc`}</pre>
         )}
         <button
           type="button"
+          disabled={isSaving}
           onClick={handleSave}
-          className="flex-1 py-3 btn-brand font-extrabold text-sm rounded-xl flex items-center justify-center gap-2"
+          className="flex-1 py-3 btn-brand font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 disabled:opacity-60"
         >
           <Save className="w-4 h-4" />
-          <span>{isEditMode ? 'Lưu Thay Đổi' : `Lưu Bài Tập (${questions.length} câu)`}</span>
+          <span>{isSaving ? 'Đang lưu & đồng bộ...' : isEditMode ? 'Lưu Thay Đổi' : `Lưu Bài Tập (${questions.length} câu)`}</span>
         </button>
       </div>
     </div>

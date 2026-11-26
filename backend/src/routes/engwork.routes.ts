@@ -15,10 +15,9 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -127,6 +126,7 @@ router.put('/assignments/:id', requireAdmin, async (req: Request, res: Response)
   try {
     const data = { ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
     await kvSet(`assignment:${req.params.id}`, data);
+    await kvSet('__initialized__', '1');
     res.json({ success: true, data });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message });
@@ -138,8 +138,8 @@ router.put('/assignments/:id', requireAdmin, async (req: Request, res: Response)
  */
 router.delete('/assignments/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const existed = await kvDelete(`assignment:${req.params.id}`);
-    if (!existed) return res.status(404).json({ success: false, message: 'Not found' });
+    await kvDelete(`assignment:${req.params.id}`);
+    await kvSet('__initialized__', '1');
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message });
@@ -148,15 +148,20 @@ router.delete('/assignments/:id', requireAdmin, async (req: Request, res: Respon
 
 /**
  * POST /api/engwork/assignments/bulk   (admin)
- * Upsert many assignments at once (used for initial seeding).
+ * Upsert many assignments at once (used for initial seeding or restoring curriculum).
+ * Pass ?force=true to overwrite even if already initialized.
  */
 router.post('/assignments/bulk', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const force = req.query.force === 'true';
+    const alreadyInit = !!(await prisma.engworkKV.findUnique({ where: { key: '__initialized__' } }));
+    if (alreadyInit && !force) {
+      return res.json({ success: true, skipped: true, message: 'Already initialized' });
+    }
     const list: any[] = Array.isArray(req.body) ? req.body : [];
     await Promise.all(
-      list.map((a) => a?.id ? kvSet(`assignment:${a.id}`, a) : Promise.resolve())
+      list.map((a) => (a?.id ? kvSet(`assignment:${a.id}`, a) : Promise.resolve()))
     );
-    // Mark as initialized
     await kvSet('__initialized__', '1');
     res.json({ success: true, count: list.length });
   } catch (e: any) {

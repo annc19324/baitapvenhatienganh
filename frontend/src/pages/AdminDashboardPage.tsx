@@ -71,6 +71,9 @@ export const AdminDashboardPage: React.FC = () => {
   useEffect(() => {
     if (isAdmin) {
       loadData();
+      HomeworkStorageService.syncFromBackend(true).then((ok) => {
+        if (ok) loadData();
+      });
     }
   }, [isAdmin]);
 
@@ -188,20 +191,25 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  const handleDeleteAssignment = (assignId: string, title: string) => {
+  const handleDeleteAssignment = async (assignId: string, title: string) => {
     if (window.confirm(`Xóa bài tập "${title}"?`)) {
-      HomeworkStorageService.deleteAssignment(assignId);
+      const { synced } = await HomeworkStorageService.deleteAssignmentAsync(assignId);
       loadData();
-      showToast({ message: 'Đã xóa bài tập', type: 'success' });
+      showToast({
+        message: 'Đã xóa bài tập',
+        subMessage: synced ? 'Đã đồng bộ xóa lên máy chủ' : 'Đã xóa trên máy (đang chờ đồng bộ)',
+        type: synced ? 'success' : 'info',
+      });
     }
   };
 
-  const handleToggleAssignmentStatus = (assign: HomeworkAssignment) => {
+  const handleToggleAssignmentStatus = async (assign: HomeworkAssignment) => {
     const nextStatus = assign.status === 'ACTIVE' ? 'CLOSED' : 'ACTIVE';
-    HomeworkStorageService.saveAssignment({ ...assign, status: nextStatus });
+    const { synced } = await HomeworkStorageService.saveAssignmentAsync({ ...assign, status: nextStatus });
     loadData();
     showToast({
       message: nextStatus === 'ACTIVE' ? 'Đã mở lại bài tập' : 'Đã khóa bài tập',
+      subMessage: synced ? 'Đã đồng bộ lên máy chủ' : undefined,
       type: 'info',
     });
   };

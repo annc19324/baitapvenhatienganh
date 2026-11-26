@@ -25,14 +25,33 @@ export const HomeworkResultPage: React.FC = () => {
 
   useEffect(() => {
     if (!submissionId) return;
-    const sub = HomeworkStorageService.getSubmission(submissionId);
-    if (!sub) {
-      navigate('/homework');
-      return;
-    }
-    setSubmission(sub);
-    const assign = HomeworkStorageService.getAssignment(sub.assignmentId);
-    if (assign) setAssignment(assign);
+    let cancelled = false;
+
+    const loadResult = async () => {
+      let sub = HomeworkStorageService.getSubmission(submissionId);
+      if (!sub) {
+        await HomeworkStorageService.syncFromBackend(true);
+        if (cancelled) return;
+        sub = HomeworkStorageService.getSubmission(submissionId);
+      }
+      if (!sub) {
+        navigate('/homework');
+        return;
+      }
+      setSubmission(sub);
+      let assign = HomeworkStorageService.getAssignment(sub.assignmentId);
+      if (!assign) {
+        await HomeworkStorageService.syncFromBackend(true);
+        if (cancelled) return;
+        assign = HomeworkStorageService.getAssignment(sub.assignmentId);
+      }
+      if (assign) setAssignment(assign);
+    };
+
+    loadResult();
+    return () => {
+      cancelled = true;
+    };
   }, [submissionId]);
 
   if (!submission || !assignment) {

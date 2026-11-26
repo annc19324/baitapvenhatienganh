@@ -1,11 +1,13 @@
 /**
- * HomeworkStorageService — Cross-device sync via backend API.
+ * HomeworkStorageService — Cross-device sync via PostgreSQL backend API.
  *
  * Strategy:
- *   • Writes go to BOTH backend API (fire-and-forget) AND localStorage.
- *   • Reads: on page load we pull from API and merge into localStorage.
- *     Subsequent reads in the same session use the merged localStorage.
- *   • If the backend is unreachable, the app keeps working offline from cache.
+ *   • Backend (PostgreSQL via /api/engwork/*) is the source of truth across devices.
+ *   • localStorage acts as instant local cache + offline fallback.
+ *   • Async methods (saveAssignmentAsync, deleteAssignmentAsync, saveSubmissionAsync, etc.)
+ *     await the backend so callers can guarantee persistence before navigating.
+ *   • Pending offline writes/deletes are queued in localStorage and flushed on next sync,
+ *     preventing newly created items (e.g. ENG-GQT8) from ever being wiped by a stale pull.
  */
 
 import { HomeworkAssignment, HomeworkSubmission } from '../types/homework';
@@ -16,10 +18,35 @@ const ASSIGNMENTS_KEY = 'engwork_assignments_v2';
 const SUBMISSIONS_KEY = 'engwork_submissions_v2';
 const LEGACY_ASSIGNMENTS_KEY = 'smartdoc_homework_assignments_v1';
 const SYNC_TS_KEY = 'engwork_sync_ts';
+const PENDING_ASSIGN_UPSERTS_KEY = 'engwork_pending_assign_upserts';
+const PENDING_ASSIGN_DELETES_KEY = 'engwork_pending_assign_deletes';
+const PENDING_SUB_UPSERTS_KEY = 'engwork_pending_sub_upserts';
+const PENDING_SUB_DELETES_KEY = 'engwork_pending_sub_deletes';
 
-/** Clear cached sync timestamp so next load re-fetches from backend. */
 function invalidateSyncCache() {
   localStorage.removeItem(SYNC_TS_KEY);
+}
+
+function getIdSet(key: string): string[] {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function addIdToSet(key: string, id: string) {
+  const arr = getIdSet(key);
+  if (!arr.includes(id)) {
+    arr.push(id);
+    localStorage.setItem(key, JSON.stringify(arr));
+  }
+}
+
+function removeIdFromSet(key: string, id: string) {
+  const arr = getIdSet(key).filter((x) => x !== id);
+  localStorage.setItem(key, JSON.stringify(arr));
 }
 
 // ─── Seed helpers ──────────────────────────────────────────────────────────
@@ -100,33 +127,20 @@ function localSetSubmissions(list: HomeworkSubmission[]): void {
   localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(list));
 }
 
-// ─── Merge helpers (server wins for same id, then local custom) ────────────
-
-function mergeAssignments(local: HomeworkAssignment[], remote: HomeworkAssignment[]): HomeworkAssignment[] {
-  const map = new Map<string, HomeworkAssignment>();
-  local.forEach((a) => map.set(a.id, a));
-  remote.forEach((a) => map.set(a.id, a)); // remote wins
-  return Array.from(map.values());
-}
-
-function mergeSubmissions(local: HomeworkSubmission[], remote: HomeworkSubmission[]): HomeworkSubmission[] {
-  const map = new Map<string, HomeworkSubmission>();
-  local.forEach((s) => map.set(s.id, s));
-  remote.forEach((s) => map.set(s.id, s));
-  return Array.from(map.values());
-}
-
 // ─── Main service class ────────────────────────────────────────────────────
+
+let _syncInFlight: Promise<boolean> | null = null;
 
 export class HomeworkStorageService {
   /**
-   * Call once on app start. Pulls from backend first; only seeds if backend is uninitialized.
+   * Call once on app start or page load. Pulls from backend first; only seeds if backend is uninitialized.
    */
-  static async initializeAsync(): Promise<void> {
-    const synced = await this.syncFromBackend().catch(() => false);
+  static async initializeAsync(force = false): Promise<boolean> {
+    const synced = await this.syncFromBackend(force).catch(() => false);
     if (!synced) {
       this.initializeIfEmpty();
     }
+    return synced;
   }
 
   static initializeIfEmpty(): void {
@@ -150,47 +164,119 @@ export class HomeworkStorageService {
     }
   }
 
-  /** Pull fresh data from backend; backend is the source of truth so deletions sync too. */
-  static async syncFromBackend(): Promise<boolean> {
-    try {
-      const tsData = await apiGetRaw<{ lastUpdated?: string }>('/api/engwork/sync-ts');
-      if (!tsData) return false; // backend unreachable
-      const remoteTs = tsData.lastUpdated;
-      const localTs = localStorage.getItem(SYNC_TS_KEY);
-      if (remoteTs && localTs && remoteTs <= localTs && localStorage.getItem(ASSIGNMENTS_KEY)) {
-        return true; // already up to date
+  /** Flush any offline pending writes/deletes to the backend before pulling. */
+  private static async flushPendingChanges(): Promise<void> {
+    const localAssigns = localGetAssignments();
+    for (const id of getIdSet(PENDING_ASSIGN_UPSERTS_KEY)) {
+      const item = localAssigns.find((a) => a.id === id);
+      if (item) {
+        const res = await apiPut(`/api/engwork/assignments/${id}`, item, true);
+        if (res) removeIdFromSet(PENDING_ASSIGN_UPSERTS_KEY, id);
+      } else {
+        removeIdFromSet(PENDING_ASSIGN_UPSERTS_KEY, id);
       }
-
-      const [assignRes, remoteSubmissions, remoteSiteConfig] = await Promise.all([
-        apiGetRaw<{ initialized?: boolean; data?: HomeworkAssignment[] }>('/api/engwork/assignments'),
-        apiGet<HomeworkSubmission[]>('/api/engwork/submissions'),
-        apiGet<Record<string, any>>('/api/engwork/site-config'),
-      ]);
-
-      if (assignRes) {
-        if (assignRes.initialized) {
-          // Server is source of truth — replace local cache so deletions are respected
-          localSetAssignments(assignRes.data || []);
-        } else {
-          // Brand new server: seed locally & push to server once
-          this.initializeIfEmpty();
-          const seeded = localGetAssignments();
-          await apiPost('/api/engwork/assignments/bulk', seeded, true).catch(() => {});
-        }
-      }
-      if (remoteSubmissions) {
-        localSetSubmissions(remoteSubmissions);
-      }
-      if (remoteSiteConfig && Object.keys(remoteSiteConfig).length > 0) {
-        const existing = JSON.parse(localStorage.getItem('engwork_site_config_v1') || '{}');
-        localStorage.setItem('engwork_site_config_v1', JSON.stringify({ ...existing, ...remoteSiteConfig }));
-      }
-
-      if (remoteTs) localStorage.setItem(SYNC_TS_KEY, remoteTs);
-      return true;
-    } catch {
-      return false;
     }
+
+    for (const id of getIdSet(PENDING_ASSIGN_DELETES_KEY)) {
+      const ok = await apiDelete(`/api/engwork/assignments/${id}`);
+      if (ok) removeIdFromSet(PENDING_ASSIGN_DELETES_KEY, id);
+    }
+
+    const localSubs = localGetSubmissions();
+    for (const id of getIdSet(PENDING_SUB_UPSERTS_KEY)) {
+      const item = localSubs.find((s) => s.id === id);
+      if (item) {
+        const res = await apiPut(`/api/engwork/submissions/${id}`, item, false);
+        if (res) removeIdFromSet(PENDING_SUB_UPSERTS_KEY, id);
+      } else {
+        removeIdFromSet(PENDING_SUB_UPSERTS_KEY, id);
+      }
+    }
+
+    for (const id of getIdSet(PENDING_SUB_DELETES_KEY)) {
+      const ok = await apiDelete(`/api/engwork/submissions/${id}`);
+      if (ok) removeIdFromSet(PENDING_SUB_DELETES_KEY, id);
+    }
+  }
+
+  /** Pull fresh data from backend; backend is the source of truth so deletions sync too. */
+  static async syncFromBackend(force = false): Promise<boolean> {
+    if (_syncInFlight && !force) return _syncInFlight;
+
+    const run = async (): Promise<boolean> => {
+      try {
+        await this.flushPendingChanges();
+
+        const tsData = await apiGetRaw<{ lastUpdated?: string }>('/api/engwork/sync-ts');
+        if (!tsData) return false; // backend unreachable
+
+        const remoteTs = tsData.lastUpdated;
+        const localTs = localStorage.getItem(SYNC_TS_KEY);
+        if (!force && remoteTs && localTs && remoteTs <= localTs && localStorage.getItem(ASSIGNMENTS_KEY)) {
+          return true; // already up to date
+        }
+
+        const [assignRes, remoteSubmissions, remoteSiteConfig] = await Promise.all([
+          apiGetRaw<{ initialized?: boolean; data?: HomeworkAssignment[] }>('/api/engwork/assignments'),
+          apiGet<HomeworkSubmission[]>('/api/engwork/submissions'),
+          apiGet<Record<string, any>>('/api/engwork/site-config'),
+        ]);
+
+        if (assignRes) {
+          if (assignRes.initialized) {
+            const remoteList = assignRes.data || [];
+            // Preserve any still-unsynced local upserts & exclude still-pending deletes
+            const pendingUpserts = getIdSet(PENDING_ASSIGN_UPSERTS_KEY);
+            const pendingDeletes = new Set(getIdSet(PENDING_ASSIGN_DELETES_KEY));
+            const localMap = new Map(localGetAssignments().map((a) => [a.id, a]));
+            const merged = remoteList.filter((a) => !pendingDeletes.has(a.id));
+            const mergedIds = new Set(merged.map((a) => a.id));
+            for (const id of pendingUpserts) {
+              const localItem = localMap.get(id);
+              if (localItem && !mergedIds.has(id)) {
+                merged.unshift(localItem);
+              }
+            }
+            localSetAssignments(merged);
+          } else {
+            // Brand new server: seed locally & push to server once
+            this.initializeIfEmpty();
+            const seeded = localGetAssignments();
+            await apiPost('/api/engwork/assignments/bulk', seeded, true).catch(() => {});
+          }
+        }
+
+        if (remoteSubmissions) {
+          const pendingSubUpserts = getIdSet(PENDING_SUB_UPSERTS_KEY);
+          const pendingSubDeletes = new Set(getIdSet(PENDING_SUB_DELETES_KEY));
+          const localSubMap = new Map(localGetSubmissions().map((s) => [s.id, s]));
+          const mergedSubs = remoteSubmissions.filter((s) => !pendingSubDeletes.has(s.id));
+          const mergedSubIds = new Set(mergedSubs.map((s) => s.id));
+          for (const id of pendingSubUpserts) {
+            const localItem = localSubMap.get(id);
+            if (localItem && !mergedSubIds.has(id)) {
+              mergedSubs.unshift(localItem);
+            }
+          }
+          localSetSubmissions(mergedSubs);
+        }
+
+        if (remoteSiteConfig && Object.keys(remoteSiteConfig).length > 0) {
+          const existing = JSON.parse(localStorage.getItem('engwork_site_config_v1') || '{}');
+          localStorage.setItem('engwork_site_config_v1', JSON.stringify({ ...existing, ...remoteSiteConfig }));
+        }
+
+        if (remoteTs) localStorage.setItem(SYNC_TS_KEY, remoteTs);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        _syncInFlight = null;
+      }
+    };
+
+    _syncInFlight = run();
+    return _syncInFlight;
   }
 
   // ── Assignments ──────────────────────────────────────────────────────────
@@ -224,24 +310,67 @@ export class HomeworkStorageService {
     );
   }
 
-  static saveAssignment(assignment: HomeworkAssignment): HomeworkAssignment {
+  private static upsertAssignmentLocal(assignment: HomeworkAssignment): HomeworkAssignment {
     this.initializeIfEmpty();
     const all = localGetAssignments();
-    const updated = { ...assignment, updatedAt: new Date().toISOString() };
+    const updated: HomeworkAssignment = {
+      ...assignment,
+      createdAt: assignment.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
     const index = all.findIndex((a) => a.id === assignment.id);
     if (index >= 0) {
       all[index] = updated;
     } else {
-      updated.createdAt = updated.createdAt || new Date().toISOString();
       all.unshift(updated);
     }
     localSetAssignments(all);
-
-    // Sync to backend (and invalidate cache so other devices re-fetch)
-    apiPut(`/api/engwork/assignments/${assignment.id}`, updated, true).catch(() => {});
-    invalidateSyncCache();
-
+    removeIdFromSet(PENDING_ASSIGN_DELETES_KEY, assignment.id);
+    addIdToSet(PENDING_ASSIGN_UPSERTS_KEY, assignment.id);
     return updated;
+  }
+
+  static async saveAssignmentAsync(
+    assignment: HomeworkAssignment
+  ): Promise<{ assignment: HomeworkAssignment; synced: boolean }> {
+    const updated = this.upsertAssignmentLocal(assignment);
+    const res = await apiPut(`/api/engwork/assignments/${updated.id}`, updated, true);
+    if (res) {
+      removeIdFromSet(PENDING_ASSIGN_UPSERTS_KEY, updated.id);
+      invalidateSyncCache();
+      return { assignment: updated, synced: true };
+    }
+    return { assignment: updated, synced: false };
+  }
+
+  static saveAssignment(assignment: HomeworkAssignment): HomeworkAssignment {
+    const updated = this.upsertAssignmentLocal(assignment);
+    apiPut(`/api/engwork/assignments/${updated.id}`, updated, true)
+      .then((res) => {
+        if (res) {
+          removeIdFromSet(PENDING_ASSIGN_UPSERTS_KEY, updated.id);
+          invalidateSyncCache();
+        }
+      })
+      .catch(() => {});
+    return updated;
+  }
+
+  static async deleteAssignmentAsync(id: string): Promise<{ deleted: boolean; synced: boolean }> {
+    const all = localGetAssignments();
+    const filtered = all.filter((a) => a.id !== id);
+    if (filtered.length === all.length) return { deleted: false, synced: true };
+
+    localSetAssignments(filtered);
+    removeIdFromSet(PENDING_ASSIGN_UPSERTS_KEY, id);
+    addIdToSet(PENDING_ASSIGN_DELETES_KEY, id);
+
+    const ok = await apiDelete(`/api/engwork/assignments/${id}`);
+    if (ok) {
+      removeIdFromSet(PENDING_ASSIGN_DELETES_KEY, id);
+      invalidateSyncCache();
+    }
+    return { deleted: true, synced: ok };
   }
 
   static deleteAssignment(id: string): boolean {
@@ -249,8 +378,16 @@ export class HomeworkStorageService {
     const filtered = all.filter((a) => a.id !== id);
     if (filtered.length !== all.length) {
       localSetAssignments(filtered);
-      apiDelete(`/api/engwork/assignments/${id}`).catch(() => {});
-      invalidateSyncCache();
+      removeIdFromSet(PENDING_ASSIGN_UPSERTS_KEY, id);
+      addIdToSet(PENDING_ASSIGN_DELETES_KEY, id);
+      apiDelete(`/api/engwork/assignments/${id}`)
+        .then((ok) => {
+          if (ok) {
+            removeIdFromSet(PENDING_ASSIGN_DELETES_KEY, id);
+            invalidateSyncCache();
+          }
+        })
+        .catch(() => {});
       return true;
     }
     return false;
@@ -283,7 +420,7 @@ export class HomeworkStorageService {
     return this.getSubmissions().find((s) => s.id === id) || null;
   }
 
-  static saveSubmission(submission: HomeworkSubmission): HomeworkSubmission {
+  private static upsertSubmissionLocal(submission: HomeworkSubmission): HomeworkSubmission {
     this.initializeIfEmpty();
     const all = localGetSubmissions();
     const existingIndex = all.findIndex((s) => s.id === submission.id);
@@ -293,12 +430,35 @@ export class HomeworkStorageService {
       all.unshift(submission);
     }
     localSetSubmissions(all);
-
-    // Any client can POST a submission; admin writes use PUT
-    apiPut(`/api/engwork/submissions/${submission.id}`, submission, false).catch(() => {});
-    invalidateSyncCache();
-
+    removeIdFromSet(PENDING_SUB_DELETES_KEY, submission.id);
+    addIdToSet(PENDING_SUB_UPSERTS_KEY, submission.id);
     return submission;
+  }
+
+  static async saveSubmissionAsync(
+    submission: HomeworkSubmission
+  ): Promise<{ submission: HomeworkSubmission; synced: boolean }> {
+    const saved = this.upsertSubmissionLocal(submission);
+    const res = await apiPut(`/api/engwork/submissions/${saved.id}`, saved, false);
+    if (res) {
+      removeIdFromSet(PENDING_SUB_UPSERTS_KEY, saved.id);
+      invalidateSyncCache();
+      return { submission: saved, synced: true };
+    }
+    return { submission: saved, synced: false };
+  }
+
+  static saveSubmission(submission: HomeworkSubmission): HomeworkSubmission {
+    const saved = this.upsertSubmissionLocal(submission);
+    apiPut(`/api/engwork/submissions/${saved.id}`, saved, false)
+      .then((res) => {
+        if (res) {
+          removeIdFromSet(PENDING_SUB_UPSERTS_KEY, saved.id);
+          invalidateSyncCache();
+        }
+      })
+      .catch(() => {});
+    return saved;
   }
 
   static deleteSubmission(id: string): boolean {
@@ -306,8 +466,16 @@ export class HomeworkStorageService {
     const filtered = all.filter((s) => s.id !== id);
     if (filtered.length !== all.length) {
       localSetSubmissions(filtered);
-      apiDelete(`/api/engwork/submissions/${id}`).catch(() => {});
-      invalidateSyncCache();
+      removeIdFromSet(PENDING_SUB_UPSERTS_KEY, id);
+      addIdToSet(PENDING_SUB_DELETES_KEY, id);
+      apiDelete(`/api/engwork/submissions/${id}`)
+        .then((ok) => {
+          if (ok) {
+            removeIdFromSet(PENDING_SUB_DELETES_KEY, id);
+            invalidateSyncCache();
+          }
+        })
+        .catch(() => {});
       return true;
     }
     return false;
@@ -328,8 +496,9 @@ export class HomeworkStorageService {
     });
     if (count > 0) {
       localSetSubmissions(updated);
-      apiPost('/api/engwork/submissions/rename-student', { oldName, newName }, true).catch(() => {});
-      invalidateSyncCache();
+      apiPost('/api/engwork/submissions/rename-student', { oldName, newName }, true)
+        .then((res) => { if (res) invalidateSyncCache(); })
+        .catch(() => {});
     }
     return count;
   }
@@ -341,8 +510,9 @@ export class HomeworkStorageService {
     const removed = all.length - filtered.length;
     if (removed > 0) {
       localSetSubmissions(filtered);
-      apiPost('/api/engwork/submissions/bulk-delete', { studentName }, true).catch(() => {});
-      invalidateSyncCache();
+      apiPost('/api/engwork/submissions/bulk-delete', { studentName }, true)
+        .then((res) => { if (res) invalidateSyncCache(); })
+        .catch(() => {});
     }
     return removed;
   }
@@ -353,8 +523,9 @@ export class HomeworkStorageService {
     const seeded = buildSeededAssignments();
     const merged = [...customOnes, ...seeded];
     localSetAssignments(merged);
-    apiPost('/api/engwork/assignments/bulk', seeded, true).catch(() => {});
-    invalidateSyncCache();
+    apiPost('/api/engwork/assignments/bulk?force=true', seeded, true)
+      .then((res) => { if (res) invalidateSyncCache(); })
+      .catch(() => {});
   }
 
   // ── Student summaries ────────────────────────────────────────────────────

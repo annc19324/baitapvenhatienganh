@@ -137,6 +137,8 @@ export const SiteConfigProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const resetConfig = () => {
     setConfig(DEFAULT_SITE_CONFIG);
+    apiPut('/api/engwork/site-config', DEFAULT_SITE_CONFIG, true).catch(() => {});
+    localStorage.removeItem(SYNC_TS_KEY);
   };
 
   return (

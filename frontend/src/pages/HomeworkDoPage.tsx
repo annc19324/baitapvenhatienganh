@@ -61,31 +61,54 @@ export const HomeworkDoPage: React.FC = () => {
 
   useEffect(() => {
     if (!codeOrId) return;
-    const found = HomeworkStorageService.getAssignment(codeOrId);
-    if (!found) {
-      showToast({
-        message: 'Không tìm thấy bài tập',
-        subMessage: `Mã "${codeOrId}" không tồn tại.`,
-        type: 'error',
-      });
-      navigate('/homework');
-      return;
-    }
-    setAssignment(found);
+    let cancelled = false;
 
-    const saved = localStorage.getItem(`hw_session_${found.id}`);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.studentName && !savedName) {
-          setStudentName(parsed.studentName);
-        }
-        setAnswers(parsed.answers || {});
-        setWordReorderIndices(parsed.wordReorderIndices || {});
-      } catch {
-        // ignore
+    const loadAssignment = async () => {
+      let found = HomeworkStorageService.getAssignment(codeOrId);
+      if (!found) {
+        await HomeworkStorageService.syncFromBackend(true);
+        if (cancelled) return;
+        found = HomeworkStorageService.getAssignment(codeOrId);
+      } else {
+        // Refresh in background so admin edits/locks reflect immediately
+        HomeworkStorageService.syncFromBackend().then(() => {
+          if (cancelled) return;
+          const refreshed = HomeworkStorageService.getAssignment(codeOrId);
+          if (refreshed) setAssignment(refreshed);
+        });
       }
-    }
+
+      if (!found) {
+        showToast({
+          message: 'Không tìm thấy bài tập',
+          subMessage: `Mã "${codeOrId}" không tồn tại.`,
+          type: 'error',
+        });
+        navigate('/homework');
+        return;
+      }
+
+      setAssignment(found);
+
+      const saved = localStorage.getItem(`hw_session_${found.id}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.studentName && !savedName) {
+            setStudentName(parsed.studentName);
+          }
+          setAnswers(parsed.answers || {});
+          setWordReorderIndices(parsed.wordReorderIndices || {});
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    loadAssignment();
+    return () => {
+      cancelled = true;
+    };
   }, [codeOrId]);
 
   useEffect(() => {
@@ -238,7 +261,7 @@ export const HomeworkDoPage: React.FC = () => {
         submittedAt: new Date().toISOString(),
       };
 
-      HomeworkStorageService.saveSubmission(submission);
+      await HomeworkStorageService.saveSubmissionAsync(submission);
       localStorage.removeItem(`hw_session_${assignment.id}`);
 
       showToast({
