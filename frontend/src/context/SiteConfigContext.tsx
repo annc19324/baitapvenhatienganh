@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { apiGet, apiPut } from '../services/apiClient';
 
+const SYNC_TS_KEY = 'engwork_sync_ts';
+
 export type LogoMode = 'icon' | 'image' | 'none';
 export type BackgroundMode = 'default' | 'solid' | 'gradient' | 'image';
 
@@ -126,8 +128,9 @@ export const SiteConfigProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const updateConfig = (partial: Partial<SiteConfig>) => {
     setConfig((prev) => {
       const next = { ...prev, ...partial };
-      // Push to backend (admin-only key on client side)
+      // Push to backend and invalidate sync cache so other devices re-fetch
       apiPut('/api/engwork/site-config', next, true).catch(() => {});
+      localStorage.removeItem(SYNC_TS_KEY);
       return next;
     });
   };

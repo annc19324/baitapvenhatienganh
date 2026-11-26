@@ -17,6 +17,11 @@ const SUBMISSIONS_KEY = 'engwork_submissions_v2';
 const LEGACY_ASSIGNMENTS_KEY = 'smartdoc_homework_assignments_v1';
 const SYNC_TS_KEY = 'engwork_sync_ts';
 
+/** Clear cached sync timestamp so next load re-fetches from backend. */
+function invalidateSyncCache() {
+  localStorage.removeItem(SYNC_TS_KEY);
+}
+
 // ─── Seed helpers ──────────────────────────────────────────────────────────
 
 export interface StudentSummary {
@@ -232,8 +237,9 @@ export class HomeworkStorageService {
     }
     localSetAssignments(all);
 
-    // Sync to backend
+    // Sync to backend (and invalidate cache so other devices re-fetch)
     apiPut(`/api/engwork/assignments/${assignment.id}`, updated, true).catch(() => {});
+    invalidateSyncCache();
 
     return updated;
   }
@@ -244,6 +250,7 @@ export class HomeworkStorageService {
     if (filtered.length !== all.length) {
       localSetAssignments(filtered);
       apiDelete(`/api/engwork/assignments/${id}`).catch(() => {});
+      invalidateSyncCache();
       return true;
     }
     return false;
@@ -289,6 +296,7 @@ export class HomeworkStorageService {
 
     // Any client can POST a submission; admin writes use PUT
     apiPut(`/api/engwork/submissions/${submission.id}`, submission, false).catch(() => {});
+    invalidateSyncCache();
 
     return submission;
   }
@@ -299,6 +307,7 @@ export class HomeworkStorageService {
     if (filtered.length !== all.length) {
       localSetSubmissions(filtered);
       apiDelete(`/api/engwork/submissions/${id}`).catch(() => {});
+      invalidateSyncCache();
       return true;
     }
     return false;
@@ -320,6 +329,7 @@ export class HomeworkStorageService {
     if (count > 0) {
       localSetSubmissions(updated);
       apiPost('/api/engwork/submissions/rename-student', { oldName, newName }, true).catch(() => {});
+      invalidateSyncCache();
     }
     return count;
   }
@@ -332,6 +342,7 @@ export class HomeworkStorageService {
     if (removed > 0) {
       localSetSubmissions(filtered);
       apiPost('/api/engwork/submissions/bulk-delete', { studentName }, true).catch(() => {});
+      invalidateSyncCache();
     }
     return removed;
   }
@@ -343,6 +354,7 @@ export class HomeworkStorageService {
     const merged = [...customOnes, ...seeded];
     localSetAssignments(merged);
     apiPost('/api/engwork/assignments/bulk', seeded, true).catch(() => {});
+    invalidateSyncCache();
   }
 
   // ── Student summaries ────────────────────────────────────────────────────

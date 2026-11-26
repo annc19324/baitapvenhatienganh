@@ -2,56 +2,62 @@
  * EngWork CRUD Routes — Cross-device sync for homework assignments,
  * submissions, and site config.
  *
- * Uses in-process JSON store with disk persistence (data/engwork.json).
- * No Prisma migration required.
+ * Uses PostgreSQL via Prisma (EngworkKV table) for persistent storage
+ * that survives Render restarts and is shared across all devices.
  *
- * Secret admin key read from env ENGWORK_ADMIN_KEY (default: 'annc19324:Zeanokai@1')
+ * Key format:
+ *   "assignment:<id>"    → one assignment JSON
+ *   "submission:<id>"    → one submission JSON
+ *   "site_config"        → site appearance JSON
+ *   "__initialized__"    → "1" once seeds have been pushed
+ *
+ * Admin auth: x-admin-key header must equal ENGWORK_ADMIN_KEY env var.
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { PrismaClient } from '@prisma/client';
 
 const router = Router();
+const prisma = new PrismaClient();
 
-// ─── Persistence helpers ───────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '../../data');
-const DATA_FILE = path.join(DATA_DIR, 'engwork.json');
-
-type Store = {
-  initialized?: boolean;
-  assignments: Record<string, any>;
-  submissions: Record<string, any>;
-  siteConfig: Record<string, any>;
-  lastUpdated: string;
-};
-
-function loadStore(): Store {
+async function kvGet(key: string): Promise<any | null> {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (!fs.existsSync(DATA_FILE)) return { initialized: false, assignments: {}, submissions: {}, siteConfig: {}, lastUpdated: new Date().toISOString() };
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(raw) as Store;
+    const row = await prisma.engworkKV.findUnique({ where: { key } });
+    if (!row) return null;
+    return JSON.parse(row.value);
   } catch {
-    return { initialized: false, assignments: {}, submissions: {}, siteConfig: {}, lastUpdated: new Date().toISOString() };
+    return null;
   }
 }
 
-function saveStore(store: Store): void {
+async function kvSet(key: string, value: any): Promise<void> {
+  const json = JSON.stringify(value);
+  await prisma.engworkKV.upsert({
+    where: { key },
+    update: { value: json },
+    create: { key, value: json },
+  });
+}
+
+async function kvDelete(key: string): Promise<boolean> {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    store.lastUpdated = new Date().toISOString();
-    fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('[EngWork] Failed to save store:', e);
+    await prisma.engworkKV.delete({ where: { key } });
+    return true;
+  } catch {
+    return false;
   }
 }
 
-// ─── Admin auth middleware ─────────────────────────────────────────────────
+async function getLastUpdated(): Promise<string> {
+  const row = await prisma.engworkKV.findFirst({
+    orderBy: { updatedAt: 'desc' },
+  });
+  return row?.updatedAt?.toISOString() ?? new Date().toISOString();
+}
+
+// ─── Admin auth ───────────────────────────────────────────────────────────
 
 const ADMIN_KEY = process.env.ENGWORK_ADMIN_KEY || 'annc19324:Zeanokai@1';
 
@@ -63,15 +69,20 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// ─── Sync timestamp ──────────────────────────────────────────────────────
+// ─── Sync timestamp ───────────────────────────────────────────────────────
 
 /**
  * GET /api/engwork/sync-ts
- * Returns the last-updated timestamp so clients can decide if they need to re-fetch.
+ * Returns the latest updatedAt timestamp across all KV entries.
  */
-router.get('/sync-ts', (_req: Request, res: Response) => {
-  const store = loadStore();
-  res.json({ success: true, lastUpdated: store.lastUpdated });
+router.get('/sync-ts', async (_req: Request, res: Response) => {
+  try {
+    const ts = await getLastUpdated();
+    const initialized = !!(await prisma.engworkKV.findUnique({ where: { key: '__initialized__' } }));
+    res.json({ success: true, lastUpdated: ts, initialized });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -80,60 +91,77 @@ router.get('/sync-ts', (_req: Request, res: Response) => {
 
 /**
  * GET /api/engwork/assignments
- * Returns all assignments as array.
+ * Returns all assignments as array (reads all keys prefixed "assignment:").
  */
-router.get('/assignments', (_req: Request, res: Response) => {
-  const store = loadStore();
-  res.json({ success: true, initialized: !!store.initialized, data: Object.values(store.assignments) });
+router.get('/assignments', async (_req: Request, res: Response) => {
+  try {
+    const rows = await prisma.engworkKV.findMany({
+      where: { key: { startsWith: 'assignment:' } },
+    });
+    const data = rows.map((r) => JSON.parse(r.value));
+    const initialized = !!(await prisma.engworkKV.findUnique({ where: { key: '__initialized__' } }));
+    res.json({ success: true, initialized, data });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * GET /api/engwork/assignments/:id
  */
-router.get('/assignments/:id', (req: Request, res: Response) => {
-  const store = loadStore();
-  const item = store.assignments[req.params.id];
-  if (!item) return res.status(404).json({ success: false, message: 'Not found' });
-  res.json({ success: true, data: item });
+router.get('/assignments/:id', async (req: Request, res: Response) => {
+  try {
+    const item = await kvGet(`assignment:${req.params.id}`);
+    if (!item) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, data: item });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * PUT /api/engwork/assignments/:id   (admin)
  * Upsert an assignment.
  */
-router.put('/assignments/:id', requireAdmin, (req: Request, res: Response) => {
-  const store = loadStore();
-  store.initialized = true;
-  store.assignments[req.params.id] = { ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
-  saveStore(store);
-  res.json({ success: true, data: store.assignments[req.params.id] });
+router.put('/assignments/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const data = { ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+    await kvSet(`assignment:${req.params.id}`, data);
+    res.json({ success: true, data });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * DELETE /api/engwork/assignments/:id   (admin)
  */
-router.delete('/assignments/:id', requireAdmin, (req: Request, res: Response) => {
-  const store = loadStore();
-  store.initialized = true;
-  if (!store.assignments[req.params.id]) return res.status(404).json({ success: false, message: 'Not found' });
-  delete store.assignments[req.params.id];
-  saveStore(store);
-  res.json({ success: true });
+router.delete('/assignments/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const existed = await kvDelete(`assignment:${req.params.id}`);
+    if (!existed) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * POST /api/engwork/assignments/bulk   (admin)
- * Replace entire assignments store (used for seeding or restoring curriculum).
+ * Upsert many assignments at once (used for initial seeding).
  */
-router.post('/assignments/bulk', requireAdmin, (req: Request, res: Response) => {
-  const store = loadStore();
-  store.initialized = true;
-  const list: any[] = Array.isArray(req.body) ? req.body : [];
-  const map: Record<string, any> = {};
-  list.forEach((a) => { if (a?.id) map[a.id] = a; });
-  store.assignments = { ...store.assignments, ...map };
-  saveStore(store);
-  res.json({ success: true, count: list.length });
+router.post('/assignments/bulk', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const list: any[] = Array.isArray(req.body) ? req.body : [];
+    await Promise.all(
+      list.map((a) => a?.id ? kvSet(`assignment:${a.id}`, a) : Promise.resolve())
+    );
+    // Mark as initialized
+    await kvSet('__initialized__', '1');
+    res.json({ success: true, count: list.length });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -143,83 +171,107 @@ router.post('/assignments/bulk', requireAdmin, (req: Request, res: Response) => 
 /**
  * GET /api/engwork/submissions
  */
-router.get('/submissions', (_req: Request, res: Response) => {
-  const store = loadStore();
-  res.json({ success: true, data: Object.values(store.submissions) });
+router.get('/submissions', async (_req: Request, res: Response) => {
+  try {
+    const rows = await prisma.engworkKV.findMany({
+      where: { key: { startsWith: 'submission:' } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    res.json({ success: true, data: rows.map((r) => JSON.parse(r.value)) });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * GET /api/engwork/submissions/:id
  */
-router.get('/submissions/:id', (req: Request, res: Response) => {
-  const store = loadStore();
-  const item = store.submissions[req.params.id];
-  if (!item) return res.status(404).json({ success: false, message: 'Not found' });
-  res.json({ success: true, data: item });
+router.get('/submissions/:id', async (req: Request, res: Response) => {
+  try {
+    const item = await kvGet(`submission:${req.params.id}`);
+    if (!item) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, data: item });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * PUT /api/engwork/submissions/:id
- * Upsert a submission. Any client can create; admin can edit.
+ * Upsert — any device (student submitting or admin editing).
  */
-router.put('/submissions/:id', (req: Request, res: Response) => {
-  const store = loadStore();
-  store.submissions[req.params.id] = { ...req.body, id: req.params.id };
-  saveStore(store);
-  res.json({ success: true, data: store.submissions[req.params.id] });
+router.put('/submissions/:id', async (req: Request, res: Response) => {
+  try {
+    const data = { ...req.body, id: req.params.id };
+    await kvSet(`submission:${req.params.id}`, data);
+    res.json({ success: true, data });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * DELETE /api/engwork/submissions/:id  (admin)
  */
-router.delete('/submissions/:id', requireAdmin, (req: Request, res: Response) => {
-  const store = loadStore();
-  if (!store.submissions[req.params.id]) return res.status(404).json({ success: false, message: 'Not found' });
-  delete store.submissions[req.params.id];
-  saveStore(store);
-  res.json({ success: true });
+router.delete('/submissions/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await kvDelete(`submission:${req.params.id}`);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * POST /api/engwork/submissions/bulk-delete  (admin)
  * Delete all submissions matching studentName.
  */
-router.post('/submissions/bulk-delete', requireAdmin, (req: Request, res: Response) => {
-  const { studentName } = req.body as { studentName?: string };
-  const store = loadStore();
-  let count = 0;
-  if (studentName) {
+router.post('/submissions/bulk-delete', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { studentName } = req.body as { studentName?: string };
+    if (!studentName) return res.json({ success: true, deleted: 0 });
     const norm = studentName.trim().toLowerCase();
-    Object.keys(store.submissions).forEach((k) => {
-      if ((store.submissions[k].studentName || '').trim().toLowerCase() === norm) {
-        delete store.submissions[k];
+    const rows = await prisma.engworkKV.findMany({
+      where: { key: { startsWith: 'submission:' } },
+    });
+    let count = 0;
+    for (const row of rows) {
+      const sub = JSON.parse(row.value);
+      if ((sub.studentName || '').trim().toLowerCase() === norm) {
+        await prisma.engworkKV.delete({ where: { key: row.key } });
         count++;
       }
-    });
+    }
+    res.json({ success: true, deleted: count });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
   }
-  saveStore(store);
-  res.json({ success: true, deleted: count });
 });
 
 /**
  * POST /api/engwork/submissions/rename-student  (admin)
- * Rename all submissions for a student.
  */
-router.post('/submissions/rename-student', requireAdmin, (req: Request, res: Response) => {
-  const { oldName, newName } = req.body as { oldName?: string; newName?: string };
-  const store = loadStore();
-  let count = 0;
-  if (oldName && newName) {
+router.post('/submissions/rename-student', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { oldName, newName } = req.body as { oldName?: string; newName?: string };
+    if (!oldName || !newName) return res.json({ success: true, updated: 0 });
     const norm = oldName.trim().toLowerCase();
-    Object.keys(store.submissions).forEach((k) => {
-      if ((store.submissions[k].studentName || '').trim().toLowerCase() === norm) {
-        store.submissions[k].studentName = newName.trim();
+    const rows = await prisma.engworkKV.findMany({
+      where: { key: { startsWith: 'submission:' } },
+    });
+    let count = 0;
+    for (const row of rows) {
+      const sub = JSON.parse(row.value);
+      if ((sub.studentName || '').trim().toLowerCase() === norm) {
+        sub.studentName = newName.trim();
+        await kvSet(row.key, sub);
         count++;
       }
-    });
+    }
+    res.json({ success: true, updated: count });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
   }
-  saveStore(store);
-  res.json({ success: true, updated: count });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -229,19 +281,25 @@ router.post('/submissions/rename-student', requireAdmin, (req: Request, res: Res
 /**
  * GET /api/engwork/site-config
  */
-router.get('/site-config', (_req: Request, res: Response) => {
-  const store = loadStore();
-  res.json({ success: true, data: store.siteConfig });
+router.get('/site-config', async (_req: Request, res: Response) => {
+  try {
+    const data = (await kvGet('site_config')) ?? {};
+    res.json({ success: true, data });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 /**
  * PUT /api/engwork/site-config  (admin)
  */
-router.put('/site-config', requireAdmin, (req: Request, res: Response) => {
-  const store = loadStore();
-  store.siteConfig = { ...req.body };
-  saveStore(store);
-  res.json({ success: true, data: store.siteConfig });
+router.put('/site-config', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await kvSet('site_config', req.body);
+    res.json({ success: true, data: req.body });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 export default router;

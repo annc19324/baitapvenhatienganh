@@ -412,3 +412,17 @@ model Notification {
   @@index([userId])
   @@map("notifications")
 }
+
+// ─── EngWork: English Homework System ─────────────────────────────────────────
+
+/**
+ * Key-value store for EngWork data.
+ * key examples: "assignment:<id>", "submission:<id>", "site_config"
+ */
+model EngworkKV {
+  key       String   @id
+  value     String   @db.Text  // JSON blob
+  updatedAt DateTime @updatedAt
+
+  @@map("engwork_kv")
+}
