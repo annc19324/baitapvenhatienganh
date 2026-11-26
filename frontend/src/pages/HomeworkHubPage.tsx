@@ -79,7 +79,8 @@ export const HomeworkHubPage: React.FC = () => {
     return map;
   }, [studentName, assignments]);
 
-  const completedCount = Object.keys(studentLatestByAssignment).length;
+  const activeIds = useMemo(() => new Set(assignments.map((a) => a.id)), [assignments]);
+  const completedCount = Object.keys(studentLatestByAssignment).filter((id) => activeIds.has(id)).length;
 
   const handleSaveName = (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,7 +238,7 @@ export const HomeworkHubPage: React.FC = () => {
               <form onSubmit={handleJoinByPin} className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="VD: ENG-MN1, ENG-PT1"
+                  placeholder="Nhập mã bài tập (VD: ENG-XXXX)"
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value.toUpperCase())}
                   className="flex-1 min-w-0 px-3.5 py-3 bg-white text-slate-900 font-mono font-extrabold tracking-wider text-base sm:text-sm rounded-xl placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none uppercase"
@@ -251,19 +252,21 @@ export const HomeworkHubPage: React.FC = () => {
                 </button>
               </form>
 
-              <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-white/75">
-                <span>Nhanh:</span>
-                {['ENG-MN1', 'ENG-TH2', 'ENG-PT1', 'ENG-DH1'].map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => setPinInput(code)}
-                    className="px-2 py-0.5 rounded-md bg-white/15 hover:bg-white/25 font-mono font-bold text-white transition"
-                  >
-                    {code}
-                  </button>
-                ))}
-              </div>
+              {assignments.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-white/75">
+                  <span>Nhanh:</span>
+                  {assignments.slice(0, 4).map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setPinInput(a.code)}
+                      className="px-2 py-0.5 rounded-md bg-white/15 hover:bg-white/25 font-mono font-bold text-white transition"
+                    >
+                      {a.code}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

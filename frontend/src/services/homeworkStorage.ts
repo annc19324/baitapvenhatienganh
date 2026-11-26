@@ -146,16 +146,7 @@ export class HomeworkStorageService {
   static initializeIfEmpty(): void {
     const existing = localStorage.getItem(ASSIGNMENTS_KEY);
     if (!existing) {
-      const seeded = buildSeededAssignments();
-      try {
-        const legacyRaw = localStorage.getItem(LEGACY_ASSIGNMENTS_KEY);
-        if (legacyRaw) {
-          const legacyList: HomeworkAssignment[] = JSON.parse(legacyRaw);
-          const customOnes = legacyList.filter((a) => !a.id.startsWith('seed-hw-'));
-          if (customOnes.length > 0) seeded.unshift(...customOnes);
-        }
-      } catch { /* ignore */ }
-      localSetAssignments(seeded);
+      localSetAssignments([]);
     }
 
     const existingSubs = localStorage.getItem(SUBMISSIONS_KEY);
@@ -239,10 +230,9 @@ export class HomeworkStorageService {
             }
             localSetAssignments(merged);
           } else {
-            // Brand new server: seed locally & push to server once
-            this.initializeIfEmpty();
-            const seeded = localGetAssignments();
-            await apiPost('/api/engwork/assignments/bulk', seeded, true).catch(() => {});
+            // Brand new server: initialize empty (no seed data)
+            localSetAssignments([]);
+            await apiPost('/api/engwork/assignments/bulk', [], true).catch(() => {});
           }
         }
 

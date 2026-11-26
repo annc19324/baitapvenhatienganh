@@ -42,18 +42,22 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     location.pathname.startsWith('/homework/edit');
   const isAdminPage = location.pathname.startsWith('/admin');
 
-  const handleQuickJoin = (e: React.FormEvent) => {
+  const handleQuickJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleaned = quickPin.trim().toUpperCase();
     if (!cleaned) {
       showToast({ message: 'Vui lòng nhập mã bài tập', type: 'error' });
       return;
     }
-    const found = HomeworkStorageService.getAssignment(cleaned);
+    let found = HomeworkStorageService.getAssignment(cleaned);
+    if (!found) {
+      await HomeworkStorageService.syncFromBackend(true);
+      found = HomeworkStorageService.getAssignment(cleaned);
+    }
     if (!found) {
       showToast({
         message: 'Không tìm thấy bài tập',
-        subMessage: `Mã "${cleaned}" không tồn tại. Thử ENG-MN1 hoặc ENG-PT1.`,
+        subMessage: `Mã "${cleaned}" không tồn tại.`,
         type: 'error',
       });
       return;
@@ -356,7 +360,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
               <input
                 type="text"
                 autoFocus
-                placeholder="VD: ENG-MN1, ENG-PT1"
+                placeholder="VD: ENG-XXXX"
                 value={quickPin}
                 onChange={(e) => setQuickPin(e.target.value.toUpperCase())}
                 className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-base font-extrabold tracking-wider uppercase text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
