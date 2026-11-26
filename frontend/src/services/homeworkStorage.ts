@@ -230,9 +230,14 @@ export class HomeworkStorageService {
             }
             localSetAssignments(merged);
           } else {
-            // Brand new server: initialize empty (no seed data)
-            localSetAssignments([]);
-            await apiPost('/api/engwork/assignments/bulk', [], true).catch(() => {});
+            // Brand new server: preserve any unsynced local assignments & push them
+            const pendingUpserts = getIdSet(PENDING_ASSIGN_UPSERTS_KEY);
+            const localPending = localGetAssignments().filter((a) => pendingUpserts.includes(a.id));
+            localSetAssignments(localPending);
+            const bulkOk = await apiPost('/api/engwork/assignments/bulk', localPending, true);
+            if (bulkOk) {
+              localPending.forEach((a) => removeIdFromSet(PENDING_ASSIGN_UPSERTS_KEY, a.id));
+            }
           }
         }
 

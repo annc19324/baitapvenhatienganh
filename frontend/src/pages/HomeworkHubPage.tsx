@@ -97,14 +97,18 @@ export const HomeworkHubPage: React.FC = () => {
     });
   };
 
-  const handleJoinByPin = (e: React.FormEvent) => {
+  const handleJoinByPin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanPin = pinInput.trim().toUpperCase();
     if (!cleanPin) {
       showToast({ message: 'Vui lòng nhập mã bài tập', type: 'error' });
       return;
     }
-    const found = HomeworkStorageService.getAssignment(cleanPin);
+    let found = HomeworkStorageService.getAssignment(cleanPin);
+    if (!found) {
+      await HomeworkStorageService.syncFromBackend(true);
+      found = HomeworkStorageService.getAssignment(cleanPin);
+    }
     if (!found) {
       showToast({
         message: 'Không tìm thấy bài tập',

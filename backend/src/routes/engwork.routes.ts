@@ -19,6 +19,34 @@ import { prisma } from '../config/prisma.js';
 
 const router = Router();
 
+// ─── Auto-create table if prisma db push hasn't run on Render ───────────────
+
+let _tableReady: Promise<void> | null = null;
+function ensureTable(): Promise<void> {
+  if (!_tableReady) {
+    _tableReady = prisma
+      .$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "engwork_kv" (
+          "key" TEXT NOT NULL,
+          "value" TEXT NOT NULL,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "engwork_kv_pkey" PRIMARY KEY ("key")
+        );
+      `)
+      .then(() => undefined)
+      .catch((err) => {
+        _tableReady = null;
+        console.error('[EngWork] Failed to ensure engwork_kv table:', err);
+      });
+  }
+  return _tableReady;
+}
+
+router.use(async (_req: Request, _res: Response, next: NextFunction) => {
+  await ensureTable();
+  next();
+});
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 async function kvGet(key: string): Promise<any | null> {
