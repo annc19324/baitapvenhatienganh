@@ -33,3 +33,5 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      - key: ENGWORK_ADMIN_KEY
+        value: annc19324:Zeanokai@1

@@ -13,6 +13,8 @@ import {
   ArrowDown,
   ChevronDown,
   ChevronUp,
+  ClipboardPaste,
+  X as XIcon,
 } from 'lucide-react';
 import {
   HomeworkQuestion,
@@ -22,6 +24,7 @@ import {
   TheorySection,
 } from '../types/homework';
 import { HomeworkStorageService, generatePinCode } from '../services/homeworkStorage';
+import { parseQuickPaste } from '../services/quickPasteParser';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { QUESTION_TYPE_META, QuestionTypeBadge } from '../components/QuestionTypeBadge';
@@ -59,6 +62,10 @@ export const HomeworkCreatePage: React.FC = () => {
   const [theorySections, setTheorySections] = useState<TheorySection[]>([]);
 
   const [questions, setQuestions] = useState<HomeworkQuestion[]>([]);
+
+  // Quick-Paste state
+  const [quickPasteOpen, setQuickPasteOpen] = useState(false);
+  const [quickPasteText, setQuickPasteText] = useState('');
 
   useEffect(() => {
     if (!editId) return;
@@ -130,6 +137,27 @@ export const HomeworkCreatePage: React.FC = () => {
 
   const handleDeleteTheorySection = (index: number) => {
     setTheorySections((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Quick-Paste handler
+  const handleQuickParse = () => {
+    if (!quickPasteText.trim()) {
+      showToast({ message: 'Vui lòng dán nội dung vào ô trống', type: 'info' });
+      return;
+    }
+    try {
+      const parsed = parseQuickPaste(quickPasteText);
+      if (!parsed.length) {
+        showToast({ message: 'Không nhận dạng được câu hỏi. Kiểm tra định dạng.', type: 'error' });
+        return;
+      }
+      setQuestions((prev) => [...prev, ...(parsed as HomeworkQuestion[])]);
+      showToast({ message: `Đã thêm ${parsed.length} câu hỏi từ Quick Paste!`, type: 'success' });
+      setQuickPasteText('');
+      setQuickPasteOpen(false);
+    } catch (err) {
+      showToast({ message: 'Lỗi khi phân tích nội dung. Kiểm tra định dạng.', type: 'error' });
+    }
   };
 
   // Question handlers
@@ -543,6 +571,100 @@ export const HomeworkCreatePage: React.FC = () => {
                   Xóa hết lý thuyết
                 </button>
               )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ================= QUICK PASTE ================= */}
+      <section className="surface-card rounded-2xl p-4 sm:p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ClipboardPaste className="w-4 h-4 text-brand" />
+            <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
+              Dán nhanh câu hỏi (Quick Paste)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setQuickPasteOpen((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-gradient text-white text-xs font-bold shadow-sm active:scale-95 transition"
+          >
+            {quickPasteOpen ? <XIcon className="w-3.5 h-3.5" /> : <ClipboardPaste className="w-3.5 h-3.5" />}
+            {quickPasteOpen ? 'Đóng' : 'Mở'}
+          </button>
+        </div>
+
+        {quickPasteOpen && (
+          <div className="space-y-3 animate-slide-up">
+            {/* Format guide */}
+            <div className="rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-2">
+              <p className="font-bold">Hướng dẫn định dạng:</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <p className="font-semibold mb-1">📝 Trắc nghiệm (MCQ / nhiều đáp án):</p>
+                  <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`Đề bài câu 1:
+A. Lựa chọn A
+*B. Lựa chọn B  ← dấu * = đáp án đúng
+C. Lựa chọn C
+D. Lựa chọn D
+
+Đề bài câu 2:
+*A. Đáp án 1
+*C. Đáp án 2    ← nhiều * = nhiều đáp án`}</pre>
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <p className="font-semibold mb-1">✏️ Điền vào chỗ trống:</p>
+                    <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[ĐIỀN] She [has worked] here for [five] years.`}</pre>
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-1">🔗 Nối cột:</p>
+                    <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[NỐI]
+Give up :: Từ bỏ
+Break down :: Hỏng hóc`}</pre>
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-1">🔀 Sắp xếp câu:</p>
+                    <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[SẮP XẾP] English is very useful.`}</pre>
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-1">🔍 Sửa lỗi:</p>
+                    <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[SỬA LỖI] She (A)don't (B)like apples.
+ĐÁP ÁN: A -> doesn't`}</pre>
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-1">📄 Tự luận:</p>
+                    <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[TỰ LUẬN] Write about your hobby. (tối thiểu: 40 tối đa: 100)`}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <textarea
+              value={quickPasteText}
+              onChange={(e) => setQuickPasteText(e.target.value)}
+              rows={10}
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-mono p-3 resize-y focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder={`Dán nội dung câu hỏi vào đây...\n\nVí dụ:\nCâu 1: She ___ to school every day.\nA. go\n*B. goes\nC. going\nD. gone\n\nCâu 2: They ___ football now.\nA. plays\nB. play\n*C. are playing\nD. is playing`}
+            />
+
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setQuickPasteText('')}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+              >
+                Xóa nội dung
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickParse}
+                className="px-5 py-2 rounded-xl btn-brand text-xs font-extrabold shadow-sm active:scale-95 transition flex items-center gap-2"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" />
+                Phân tích & Thêm câu hỏi
+              </button>
             </div>
           </div>
         )}

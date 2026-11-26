@@ -49,6 +49,11 @@ export const HomeworkHubPage: React.FC = () => {
   const [nameDraft, setNameDraft] = useState(studentName);
 
   useEffect(() => {
+    // Initialize + sync from backend, then refresh list
+    HomeworkStorageService.initializeAsync().then(() => {
+      setAssignments(HomeworkStorageService.getAssignments());
+    });
+    // Also set immediately from cache for instant display
     setAssignments(HomeworkStorageService.getAssignments());
   }, []);
 

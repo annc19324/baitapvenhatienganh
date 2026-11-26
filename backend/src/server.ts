@@ -13,6 +13,7 @@ import aiRoutes from './routes/ai.routes.js';
 import { courseRouter, categoryRouter, notificationRouter } from './routes/course.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import homeworkRoutes from './routes/homework.routes.js';
+import engworkRoutes from './routes/engwork.routes.js';
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use('/api/categories', categoryRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/homework', homeworkRoutes);
+app.use('/api/engwork', engworkRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

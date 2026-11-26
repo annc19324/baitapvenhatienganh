@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { apiGet, apiPut } from '../services/apiClient';
 
 export type LogoMode = 'icon' | 'image' | 'none';
 export type BackgroundMode = 'default' | 'solid' | 'gradient' | 'image';
@@ -99,6 +100,19 @@ export const SiteConfigProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return DEFAULT_SITE_CONFIG;
   });
 
+  // On mount: pull config from backend (remote wins)
+  useEffect(() => {
+    apiGet<Partial<SiteConfig>>('/api/engwork/site-config').then((remote) => {
+      if (remote && Object.keys(remote).length > 0) {
+        setConfig((prev) => {
+          const merged = { ...prev, ...remote };
+          try { localStorage.setItem(SITE_CONFIG_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+          return merged;
+        });
+      }
+    }).catch(() => { /* offline */ });
+  }, []);
+
   useEffect(() => {
     applyCssVars(config);
     document.title = `${config.brandName} — ${config.brandSubtitle}`;
@@ -110,7 +124,12 @@ export const SiteConfigProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [config]);
 
   const updateConfig = (partial: Partial<SiteConfig>) => {
-    setConfig((prev) => ({ ...prev, ...partial }));
+    setConfig((prev) => {
+      const next = { ...prev, ...partial };
+      // Push to backend (admin-only key on client side)
+      apiPut('/api/engwork/site-config', next, true).catch(() => {});
+      return next;
+    });
   };
 
   const resetConfig = () => {

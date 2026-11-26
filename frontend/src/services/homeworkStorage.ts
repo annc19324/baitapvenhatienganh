@@ -1,9 +1,23 @@
+/**
+ * HomeworkStorageService — Cross-device sync via backend API.
+ *
+ * Strategy:
+ *   • Writes go to BOTH backend API (fire-and-forget) AND localStorage.
+ *   • Reads: on page load we pull from API and merge into localStorage.
+ *     Subsequent reads in the same session use the merged localStorage.
+ *   • If the backend is unreachable, the app keeps working offline from cache.
+ */
+
 import { HomeworkAssignment, HomeworkSubmission } from '../types/homework';
 import { PRESET_TEMPLATES } from './homeworkPresets';
+import { apiGet, apiGetRaw, apiPut, apiDelete, apiPost } from './apiClient';
 
 const ASSIGNMENTS_KEY = 'engwork_assignments_v2';
 const SUBMISSIONS_KEY = 'engwork_submissions_v2';
 const LEGACY_ASSIGNMENTS_KEY = 'smartdoc_homework_assignments_v1';
+const SYNC_TS_KEY = 'engwork_sync_ts';
+
+// ─── Seed helpers ──────────────────────────────────────────────────────────
 
 export interface StudentSummary {
   studentName: string;
@@ -45,7 +59,7 @@ function buildSeededAssignments(): HomeworkAssignment[] {
       createdByName: 'Hệ Thống A–Z',
       createdAt: new Date(Date.now() - (20 - tpl.orderIndex) * 3600000).toISOString(),
       updatedAt: new Date(Date.now() - (20 - tpl.orderIndex) * 3600000).toISOString(),
-      status: 'ACTIVE',
+      status: 'ACTIVE' as const,
       theory: tpl.theory,
       questions: tpl.questions,
       totalPoints,
@@ -53,91 +67,133 @@ function buildSeededAssignments(): HomeworkAssignment[] {
   });
 }
 
+// ─── Local-cache helpers ───────────────────────────────────────────────────
+
+function localGetAssignments(): HomeworkAssignment[] {
+  try {
+    const data = localStorage.getItem(ASSIGNMENTS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+function localSetAssignments(list: HomeworkAssignment[]): void {
+  localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(list));
+}
+
+function localGetSubmissions(): HomeworkSubmission[] {
+  try {
+    const data = localStorage.getItem(SUBMISSIONS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+function localSetSubmissions(list: HomeworkSubmission[]): void {
+  localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(list));
+}
+
+// ─── Merge helpers (server wins for same id, then local custom) ────────────
+
+function mergeAssignments(local: HomeworkAssignment[], remote: HomeworkAssignment[]): HomeworkAssignment[] {
+  const map = new Map<string, HomeworkAssignment>();
+  local.forEach((a) => map.set(a.id, a));
+  remote.forEach((a) => map.set(a.id, a)); // remote wins
+  return Array.from(map.values());
+}
+
+function mergeSubmissions(local: HomeworkSubmission[], remote: HomeworkSubmission[]): HomeworkSubmission[] {
+  const map = new Map<string, HomeworkSubmission>();
+  local.forEach((s) => map.set(s.id, s));
+  remote.forEach((s) => map.set(s.id, s));
+  return Array.from(map.values());
+}
+
+// ─── Main service class ────────────────────────────────────────────────────
+
 export class HomeworkStorageService {
+  /**
+   * Call once on app start. Pulls from backend first; only seeds if backend is uninitialized.
+   */
+  static async initializeAsync(): Promise<void> {
+    const synced = await this.syncFromBackend().catch(() => false);
+    if (!synced) {
+      this.initializeIfEmpty();
+    }
+  }
+
   static initializeIfEmpty(): void {
     const existing = localStorage.getItem(ASSIGNMENTS_KEY);
     if (!existing) {
       const seeded = buildSeededAssignments();
-
-      // Migrate custom (non-seed) assignments from legacy v1 if any exist
       try {
         const legacyRaw = localStorage.getItem(LEGACY_ASSIGNMENTS_KEY);
         if (legacyRaw) {
           const legacyList: HomeworkAssignment[] = JSON.parse(legacyRaw);
           const customOnes = legacyList.filter((a) => !a.id.startsWith('seed-hw-'));
-          if (customOnes.length > 0) {
-            seeded.unshift(...customOnes);
-          }
+          if (customOnes.length > 0) seeded.unshift(...customOnes);
         }
-      } catch {
-        // ignore migration error
-      }
-
-      localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(seeded));
+      } catch { /* ignore */ }
+      localSetAssignments(seeded);
     }
 
     const existingSubs = localStorage.getItem(SUBMISSIONS_KEY);
     if (!existingSubs) {
-      const demoSubmissions: HomeworkSubmission[] = [
-        {
-          id: 'sub-demo-1',
-          assignmentId: 'seed-hw-tpl-th-present-tenses',
-          assignmentCode: 'ENG-TH2',
-          assignmentTitle: 'Bài 4: Thì Hiện Tại Đơn & Hiện Tại Tiếp Diễn',
-          studentName: 'Nguyễn Minh Anh',
-          answers: {
-            'th2-q1': 2,
-            'th2-q2': 'watches',
-            'th2-q3': { option: 'C', correction: 'like' },
-            'th2-q4': {
-              'every day / usually': 'Hiện tại đơn (Present Simple)',
-              'right now / Look!': 'Hiện tại tiếp diễn (Present Continuous)',
-              'Water boils at 100°C.': 'Sự thật hiển nhiên (Present Simple)',
-            },
-            'th2-q5': 'The children are playing in the park.',
-          },
-          scores: { 'th2-q1': 2, 'th2-q2': 2, 'th2-q3': 2, 'th2-q4': 2, 'th2-q5': 2 },
-          totalScore: 10,
-          maxTotalScore: 10,
-          percentage: 100,
-          timeSpentSeconds: 245,
-          submittedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-        },
-        {
-          id: 'sub-demo-2',
-          assignmentId: 'seed-hw-tpl-pt-12-tenses',
-          assignmentCode: 'ENG-PT1',
-          assignmentTitle: 'Bài 8: Tổng Ôn 12 Thì & Quy Tắc Phối Hợp Thì (THPTQG)',
-          studentName: 'Trần Hoàng Nam',
-          answers: {
-            'pt1-q1': 2,
-            'pt1-q2': 'has been working',
-            'pt1-q3': 'They have been living in Hanoi since 2019.',
-            'pt1-q4': {
-              'Water freezes at 0°C.': 'Present Simple (Hiện tại đơn)',
-              'I had eaten before they arrived.': 'Past Perfect (Quá khứ hoàn thành)',
-              'This time tomorrow, I will be flying.': 'Future Continuous (Tương lai tiếp diễn)',
-              'By 2030, I will have graduated.': 'Future Perfect (Tương lai hoàn thành)',
-            },
-            'pt1-q5': { option: 'A', correction: 'send' },
-          },
-          scores: { 'pt1-q1': 2, 'pt1-q2': 2, 'pt1-q3': 2, 'pt1-q4': 2, 'pt1-q5': 0 },
-          totalScore: 8,
-          maxTotalScore: 10,
-          percentage: 80,
-          timeSpentSeconds: 410,
-          submittedAt: new Date(Date.now() - 3600000 * 1.5).toISOString(),
-        },
-      ];
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(demoSubmissions));
+      localSetSubmissions([]);
     }
   }
+
+  /** Pull fresh data from backend; backend is the source of truth so deletions sync too. */
+  static async syncFromBackend(): Promise<boolean> {
+    try {
+      const tsData = await apiGetRaw<{ lastUpdated?: string }>('/api/engwork/sync-ts');
+      if (!tsData) return false; // backend unreachable
+      const remoteTs = tsData.lastUpdated;
+      const localTs = localStorage.getItem(SYNC_TS_KEY);
+      if (remoteTs && localTs && remoteTs <= localTs && localStorage.getItem(ASSIGNMENTS_KEY)) {
+        return true; // already up to date
+      }
+
+      const [assignRes, remoteSubmissions, remoteSiteConfig] = await Promise.all([
+        apiGetRaw<{ initialized?: boolean; data?: HomeworkAssignment[] }>('/api/engwork/assignments'),
+        apiGet<HomeworkSubmission[]>('/api/engwork/submissions'),
+        apiGet<Record<string, any>>('/api/engwork/site-config'),
+      ]);
+
+      if (assignRes) {
+        if (assignRes.initialized) {
+          // Server is source of truth — replace local cache so deletions are respected
+          localSetAssignments(assignRes.data || []);
+        } else {
+          // Brand new server: seed locally & push to server once
+          this.initializeIfEmpty();
+          const seeded = localGetAssignments();
+          await apiPost('/api/engwork/assignments/bulk', seeded, true).catch(() => {});
+        }
+      }
+      if (remoteSubmissions) {
+        localSetSubmissions(remoteSubmissions);
+      }
+      if (remoteSiteConfig && Object.keys(remoteSiteConfig).length > 0) {
+        const existing = JSON.parse(localStorage.getItem('engwork_site_config_v1') || '{}');
+        localStorage.setItem('engwork_site_config_v1', JSON.stringify({ ...existing, ...remoteSiteConfig }));
+      }
+
+      if (remoteTs) localStorage.setItem(SYNC_TS_KEY, remoteTs);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ── Assignments ──────────────────────────────────────────────────────────
 
   static getAssignments(): HomeworkAssignment[] {
     this.initializeIfEmpty();
     try {
-      const data = localStorage.getItem(ASSIGNMENTS_KEY);
-      const list: HomeworkAssignment[] = data ? JSON.parse(data) : [];
+      const list = localGetAssignments();
       return list.sort((a, b) => {
         const orderA = a.orderIndex ?? 999;
         const orderB = b.orderIndex ?? 999;
@@ -165,39 +221,40 @@ export class HomeworkStorageService {
 
   static saveAssignment(assignment: HomeworkAssignment): HomeworkAssignment {
     this.initializeIfEmpty();
-    const all = this.getAssignments();
+    const all = localGetAssignments();
+    const updated = { ...assignment, updatedAt: new Date().toISOString() };
     const index = all.findIndex((a) => a.id === assignment.id);
-
     if (index >= 0) {
-      all[index] = { ...assignment, updatedAt: new Date().toISOString() };
+      all[index] = updated;
     } else {
-      all.unshift({
-        ...assignment,
-        createdAt: assignment.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      updated.createdAt = updated.createdAt || new Date().toISOString();
+      all.unshift(updated);
     }
+    localSetAssignments(all);
 
-    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(all));
-    return assignment;
+    // Sync to backend
+    apiPut(`/api/engwork/assignments/${assignment.id}`, updated, true).catch(() => {});
+
+    return updated;
   }
 
   static deleteAssignment(id: string): boolean {
-    const all = this.getAssignments();
+    const all = localGetAssignments();
     const filtered = all.filter((a) => a.id !== id);
     if (filtered.length !== all.length) {
-      localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(filtered));
+      localSetAssignments(filtered);
+      apiDelete(`/api/engwork/assignments/${id}`).catch(() => {});
       return true;
     }
     return false;
   }
 
+  // ── Submissions ──────────────────────────────────────────────────────────
+
   static getSubmissions(): HomeworkSubmission[] {
     this.initializeIfEmpty();
     try {
-      const data = localStorage.getItem(SUBMISSIONS_KEY);
-      const list: HomeworkSubmission[] = data ? JSON.parse(data) : [];
-      return list.sort(
+      return localGetSubmissions().sort(
         (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
       );
     } catch {
@@ -221,22 +278,27 @@ export class HomeworkStorageService {
 
   static saveSubmission(submission: HomeworkSubmission): HomeworkSubmission {
     this.initializeIfEmpty();
-    const all = this.getSubmissions();
+    const all = localGetSubmissions();
     const existingIndex = all.findIndex((s) => s.id === submission.id);
     if (existingIndex >= 0) {
       all[existingIndex] = submission;
     } else {
       all.unshift(submission);
     }
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(all));
+    localSetSubmissions(all);
+
+    // Any client can POST a submission; admin writes use PUT
+    apiPut(`/api/engwork/submissions/${submission.id}`, submission, false).catch(() => {});
+
     return submission;
   }
 
   static deleteSubmission(id: string): boolean {
-    const all = this.getSubmissions();
+    const all = localGetSubmissions();
     const filtered = all.filter((s) => s.id !== id);
     if (filtered.length !== all.length) {
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(filtered));
+      localSetSubmissions(filtered);
+      apiDelete(`/api/engwork/submissions/${id}`).catch(() => {});
       return true;
     }
     return false;
@@ -246,7 +308,7 @@ export class HomeworkStorageService {
     const cleanOld = oldName.trim().toLowerCase();
     const cleanNew = newName.trim();
     if (!cleanOld || !cleanNew) return 0;
-    const all = this.getSubmissions();
+    const all = localGetSubmissions();
     let count = 0;
     const updated = all.map((s) => {
       if (s.studentName.trim().toLowerCase() === cleanOld) {
@@ -256,28 +318,34 @@ export class HomeworkStorageService {
       return s;
     });
     if (count > 0) {
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(updated));
+      localSetSubmissions(updated);
+      apiPost('/api/engwork/submissions/rename-student', { oldName, newName }, true).catch(() => {});
     }
     return count;
   }
 
   static deleteStudentData(studentName: string): number {
     const clean = studentName.trim().toLowerCase();
-    const all = this.getSubmissions();
+    const all = localGetSubmissions();
     const filtered = all.filter((s) => s.studentName.trim().toLowerCase() !== clean);
     const removed = all.length - filtered.length;
     if (removed > 0) {
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(filtered));
+      localSetSubmissions(filtered);
+      apiPost('/api/engwork/submissions/bulk-delete', { studentName }, true).catch(() => {});
     }
     return removed;
   }
 
   static restoreDefaultCurriculum(): void {
-    const existing = this.getAssignments();
+    const existing = localGetAssignments();
     const customOnes = existing.filter((a) => !a.id.startsWith('seed-hw-'));
     const seeded = buildSeededAssignments();
-    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify([...customOnes, ...seeded]));
+    const merged = [...customOnes, ...seeded];
+    localSetAssignments(merged);
+    apiPost('/api/engwork/assignments/bulk', seeded, true).catch(() => {});
   }
+
+  // ── Student summaries ────────────────────────────────────────────────────
 
   static getStudentSummaries(): StudentSummary[] {
     const submissions = this.getSubmissions();
@@ -294,12 +362,9 @@ export class HomeworkStorageService {
       const sorted = [...subs].sort(
         (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
       );
-      const avgPct = Math.round(
-        sorted.reduce((sum, s) => sum + s.percentage, 0) / sorted.length
-      );
+      const avgPct = Math.round(sorted.reduce((sum, s) => sum + s.percentage, 0) / sorted.length);
       const maxPct = Math.max(...sorted.map((s) => s.percentage));
       const uniqueIds = new Set(sorted.map((s) => s.assignmentId));
-
       summaries.push({
         studentName: sorted[0].studentName,
         attemptCount: sorted.length,
@@ -312,23 +377,17 @@ export class HomeworkStorageService {
     });
 
     return summaries.sort(
-      (a, b) =>
-        new Date(b.latestSubmittedAt).getTime() - new Date(a.latestSubmittedAt).getTime()
+      (a, b) => new Date(b.latestSubmittedAt).getTime() - new Date(a.latestSubmittedAt).getTime()
     );
   }
+
+  // ── CSV Export ────────────────────────────────────────────────────────────
 
   static exportSubmissionsToCsv(submissions?: HomeworkSubmission[]): string {
     const list = submissions ?? this.getSubmissions();
     const headers = [
-      'STT',
-      'Họ Và Tên',
-      'Mã Bài Tập',
-      'Tên Bài Tập',
-      'Điểm Đạt Được',
-      'Điểm Tối Đa',
-      'Tỷ Lệ (%)',
-      'Thời Gian (giây)',
-      'Ngày Nộp',
+      'STT', 'Họ Và Tên', 'Mã Bài Tập', 'Tên Bài Tập',
+      'Điểm Đạt Được', 'Điểm Tối Đa', 'Tỷ Lệ (%)', 'Thời Gian (giây)', 'Ngày Nộp',
     ];
     const rows = list.map((s, idx) => [
       idx + 1,
