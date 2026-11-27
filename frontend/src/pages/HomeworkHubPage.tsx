@@ -160,28 +160,30 @@ export const HomeworkHubPage: React.FC = () => {
   const activeLevelMeta = selectedLevel !== 'ALL' ? EDUCATION_LEVEL_MAP[selectedLevel] : null;
 
   return (
-    <div className="space-y-6 sm:space-y-7 animate-fade-in">
+    <div className="space-y-4 sm:space-y-7 animate-fade-in">
       {/* ================= CUSTOMIZABLE HERO BANNER ================= */}
-      <section className="rounded-3xl bg-hero-custom text-white p-5 sm:p-8 shadow-elevated border border-white/10 relative overflow-hidden">
+      <section className="rounded-2xl sm:rounded-3xl bg-hero-custom text-white p-3.5 sm:p-8 shadow-elevated border border-white/10 relative overflow-hidden">
         {config.heroPattern && <div className="absolute inset-0 bg-dot-grid opacity-30 pointer-events-none" />}
 
-        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-6 items-center">
           {/* Left: Dynamic Hero Copy & Student Name */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="space-y-1.5">
+          <div className="lg:col-span-7 space-y-2.5 sm:space-y-4">
+            <div className="space-y-1 sm:space-y-1.5">
               {config.heroBadge && (
-                <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-teal-300 text-xs font-bold border border-white/10">
+                <span className="inline-block px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full bg-white/10 text-teal-300 text-[10px] sm:text-xs font-bold border border-white/10">
                   {config.heroBadge}
                 </span>
               )}
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-snug">
-                {config.heroTitle}{' '}
-                <span style={{ color: config.secondaryColor }} className="brightness-125">
-                  {config.heroHighlight}
-                </span>
-              </h1>
+              {(config.heroTitle || config.heroHighlight) && (
+                <h1 className="text-lg sm:text-3xl font-extrabold tracking-tight leading-snug">
+                  {config.heroTitle}{' '}
+                  <span style={{ color: config.secondaryColor }} className="brightness-125">
+                    {config.heroHighlight}
+                  </span>
+                </h1>
+              )}
               {config.heroDescription && (
-                <p className="text-xs sm:text-sm text-slate-200/90 max-w-xl leading-relaxed">
+                <p className="text-[11px] sm:text-sm text-slate-200/90 max-w-xl leading-relaxed line-clamp-2 sm:line-clamp-none">
                   {config.heroDescription}
                 </p>
               )}
@@ -189,39 +191,41 @@ export const HomeworkHubPage: React.FC = () => {
 
             {/* Persistent Student Name Bar */}
             {!editingName && studentName ? (
-              <div className="inline-flex flex-wrap items-center gap-2.5 bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-2.5">
-                <span className="flex items-center gap-2 text-sm font-bold text-white">
-                  <User className="w-4 h-4 text-teal-300" />
-                  <span>Xin chào, {studentName}</span>
+              <div className="w-full sm:w-auto inline-flex flex-wrap items-center justify-between sm:justify-start gap-2 bg-white/10 backdrop-blur-md border border-white/15 rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5">
+                <span className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white min-w-0">
+                  <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-teal-300 shrink-0" />
+                  <span className="truncate">Xin chào, {studentName}</span>
                 </span>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/15 text-white font-bold">
-                  Đã làm {completedCount}/{assignments.length} bài
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setEditingName(true)}
-                  className="text-xs font-bold text-slate-200 hover:text-white inline-flex items-center gap-1 ml-1 underline"
-                >
-                  <Edit2 className="w-3 h-3" />
-                  <span>Đổi tên</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-full bg-white/15 text-white font-bold whitespace-nowrap">
+                    Đã làm {completedCount}/{assignments.length} bài
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingName(true)}
+                    className="text-[11px] sm:text-xs font-bold text-slate-200 hover:text-white inline-flex items-center gap-1 underline whitespace-nowrap"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>Đổi tên</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <form
                 onSubmit={handleSaveName}
-                className="flex flex-col sm:flex-row gap-2 max-w-md bg-white/10 backdrop-blur-md border border-white/15 p-2 rounded-2xl"
+                className="flex gap-1.5 sm:gap-2 max-w-md bg-white/10 backdrop-blur-md border border-white/15 p-1.5 sm:p-2 rounded-xl sm:rounded-2xl"
               >
                 <input
                   type="text"
-                  placeholder="Nhập tên của bạn (tự lưu cho lần sau)..."
+                  placeholder="Nhập tên của bạn..."
                   value={nameDraft}
                   onChange={(e) => setNameDraft(e.target.value)}
-                  className="flex-1 min-w-0 px-3.5 py-2.5 bg-white text-slate-900 text-base sm:text-sm font-bold rounded-xl placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-white/60"
+                  className="flex-1 min-w-0 px-3 py-2 bg-white text-slate-900 text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-white/60"
                 />
                 <button
                   type="submit"
                   style={{ backgroundColor: config.secondaryColor }}
-                  className="px-4 py-2.5 text-white font-extrabold text-xs sm:text-sm rounded-xl hover:brightness-110 transition shrink-0"
+                  className="px-3.5 py-2 text-white font-extrabold text-xs sm:text-sm rounded-lg sm:rounded-xl hover:brightness-110 transition shrink-0 whitespace-nowrap"
                 >
                   Lưu tên
                 </button>
@@ -231,36 +235,36 @@ export const HomeworkHubPage: React.FC = () => {
 
           {/* Right: Quick PIN Entry */}
           <div className="lg:col-span-5">
-            <div className="bg-white/10 backdrop-blur-xl border border-white/15 rounded-2xl p-4 sm:p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-extrabold uppercase tracking-wider text-white/80">
-                  Vào nhanh bằng mã bài tập
+            <div className="bg-white/10 backdrop-blur-xl border border-white/15 rounded-xl sm:rounded-2xl p-3 sm:p-5 space-y-2.5 sm:space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-white/85 whitespace-nowrap">
+                  Vào bằng mã bài tập
                 </p>
                 {isAdmin && (
                   <button
                     type="button"
                     onClick={() => navigate('/homework/create')}
-                    className="text-xs font-bold btn-brand px-2.5 py-1 rounded-lg inline-flex items-center gap-1"
+                    className="text-[11px] sm:text-xs font-bold btn-brand px-2.5 py-1 rounded-lg inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
                   >
-                    <Plus className="w-3.5 h-3.5" /> Tạo mới
+                    <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Tạo mới
                   </button>
                 )}
               </div>
 
-              <form onSubmit={handleJoinByPin} className="flex gap-2">
+              <form onSubmit={handleJoinByPin} className="flex gap-1.5 sm:gap-2">
                 <input
                   type="text"
-                  placeholder="Nhập mã bài tập (VD: ENG-XXXX)"
+                  placeholder="Nhập mã (VD: ENG-...)"
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value.toUpperCase())}
-                  className="flex-1 min-w-0 px-3.5 py-3 bg-white text-slate-900 font-mono font-extrabold tracking-wider text-base sm:text-sm rounded-xl placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none uppercase"
+                  className="flex-1 min-w-0 px-3 py-2 sm:py-2.5 bg-white text-slate-900 font-mono font-extrabold tracking-wider text-xs sm:text-sm rounded-lg sm:rounded-xl placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none uppercase"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-3 btn-brand font-extrabold text-sm rounded-xl flex items-center justify-center gap-1 transition shrink-0"
+                  className="px-3.5 py-2 sm:px-4 sm:py-2.5 btn-brand font-extrabold text-xs sm:text-sm rounded-lg sm:rounded-xl flex items-center justify-center gap-1 transition shrink-0 whitespace-nowrap"
                 >
                   <span>Vào</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
               </form>
 
@@ -285,12 +289,12 @@ export const HomeworkHubPage: React.FC = () => {
       </section>
 
       {/* ================= LEVEL ROADMAP FILTER ================= */}
-      <section className="space-y-3">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+      <section className="space-y-2.5 sm:space-y-3">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
           <button
             type="button"
             onClick={() => setSelectedLevel('ALL')}
-            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold border whitespace-nowrap transition shrink-0 ${
+            className={`px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold border whitespace-nowrap transition shrink-0 ${
               selectedLevel === 'ALL'
                 ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent shadow-sm'
                 : 'surface-card text-slate-600 dark:text-slate-300 hover:border-slate-300'
@@ -307,7 +311,7 @@ export const HomeworkHubPage: React.FC = () => {
                 key={lvl.id}
                 type="button"
                 onClick={() => setSelectedLevel(lvl.id)}
-                className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold border whitespace-nowrap transition shrink-0 flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold border whitespace-nowrap transition shrink-0 flex items-center gap-1 sm:gap-1.5 ${
                   active
                     ? `${lvl.activeTabClass} shadow-sm`
                     : 'surface-card text-slate-700 dark:text-slate-300 hover:border-slate-300'
@@ -324,8 +328,8 @@ export const HomeworkHubPage: React.FC = () => {
         </div>
 
         {activeLevelMeta && (
-          <div className="p-3.5 rounded-2xl surface-card flex items-center gap-2.5 text-xs sm:text-sm">
-            <span className="text-lg">{activeLevelMeta.emoji}</span>
+          <div className="p-3 rounded-xl sm:rounded-2xl surface-card flex items-center gap-2 text-xs sm:text-sm">
+            <span className="text-base sm:text-lg">{activeLevelMeta.emoji}</span>
             <p className="text-slate-700 dark:text-slate-200">
               <strong className="text-slate-900 dark:text-white">
                 {activeLevelMeta.label} ({activeLevelMeta.cefr}):
@@ -337,58 +341,58 @@ export const HomeworkHubPage: React.FC = () => {
       </section>
 
       {/* ================= SEARCH & VIEW MODE ================= */}
-      <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-brand" />
+      <section className="space-y-3 sm:space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+          <h2 className="text-sm sm:text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-brand" />
             <span>Bài Học &amp; Bài Tập ({filteredAssignments.length})</span>
           </h2>
 
           <div className="flex items-center gap-2">
             <div className="relative flex-1 sm:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Tìm bài học, chủ đề, mã PIN..."
+                placeholder="Tìm bài tập, mã PIN..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-8 py-2.5 text-base sm:text-sm surface-card rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-8 sm:pl-10 pr-7 py-2 sm:py-2.5 text-xs sm:text-sm surface-card rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
-            <div className="inline-flex bg-slate-200/70 dark:bg-slate-800 p-1 rounded-xl shrink-0">
+            <div className="inline-flex bg-slate-200/70 dark:bg-slate-800 p-0.5 sm:p-1 rounded-xl shrink-0">
               <button
                 type="button"
                 onClick={() => setViewMode('grid')}
                 aria-label="Dạng lưới"
-                className={`p-2 rounded-lg transition ${
+                className={`p-1.5 sm:p-2 rounded-lg transition ${
                   viewMode === 'grid'
                     ? 'bg-white dark:bg-slate-900 text-brand shadow-sm'
                     : 'text-slate-500'
                 }`}
               >
-                <LayoutGrid className="w-4 h-4" />
+                <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('list')}
                 aria-label="Dạng danh sách"
-                className={`p-2 rounded-lg transition ${
+                className={`p-1.5 sm:p-2 rounded-lg transition ${
                   viewMode === 'list'
                     ? 'bg-white dark:bg-slate-900 text-brand shadow-sm'
                     : 'text-slate-500'
                 }`}
               >
-                <List className="w-4 h-4" />
+                <List className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             </div>
           </div>

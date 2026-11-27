@@ -112,8 +112,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       )}
 
       {/* ================= ADAPTIVE TOP BAR ================= */}
-      <header className="sticky top-0 z-40 h-14 sm:h-16 glass-bar border-b pt-safe">
-        <div className="max-w-6xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-3">
+      <header className="sticky top-0 z-40 h-12 sm:h-16 glass-bar border-b pt-safe">
+        <div className="max-w-6xl mx-auto h-full px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-3">
           {/* Dynamic Brand & Logo */}
           <button
             type="button"
@@ -252,8 +252,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       {/* ================= MAIN CONTENT ================= */}
       <main className="flex-1 w-full relative z-10">
         <div
-          className={`max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 ${
-            !isDoPage ? 'pb-24 sm:pb-12' : 'pb-24 lg:pb-12'
+          className={`max-w-6xl mx-auto px-3 sm:px-6 py-3.5 sm:py-8 ${
+            !isDoPage ? 'pb-20 sm:pb-12' : 'pb-20 lg:pb-12'
           }`}
         >
           {children}
@@ -263,16 +263,16 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       {/* ================= MOBILE BOTTOM BAR (< sm) ================= */}
       {!isDoPage && (
         <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 glass-bar border-t pb-safe">
-          <div className="grid grid-cols-3 h-16 px-2">
+          <div className="grid grid-cols-3 h-14 px-2">
             <button
               type="button"
               onClick={() => navigate('/homework')}
-              className={`flex flex-col items-center justify-center gap-1 transition ${
+              className={`flex flex-col items-center justify-center gap-0.5 transition ${
                 isHome ? 'text-brand' : 'text-slate-500 dark:text-slate-400'
               }`}
             >
-              <BookOpen className="w-5 h-5" />
-              <span className="text-[11px] font-bold">Bài tập</span>
+              <BookOpen className="w-[18px] h-[18px]" />
+              <span className="text-[10px] font-bold">Bài tập</span>
             </button>
 
             {isAdmin ? (
@@ -283,26 +283,26 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   className="flex flex-col items-center justify-center gap-0.5"
                 >
                   <span
-                    className={`w-11 h-8 rounded-xl flex items-center justify-center shadow-sm ${
+                    className={`w-9 h-7 rounded-lg flex items-center justify-center shadow-sm ${
                       isCreate
                         ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
                         : 'btn-brand'
                     }`}
                   >
-                    <Plus className="w-5 h-5 stroke-[2.5]" />
+                    <Plus className="w-4 h-4 stroke-[2.5]" />
                   </span>
-                  <span className="text-[11px] font-bold text-brand">Tạo bài</span>
+                  <span className="text-[10px] font-bold text-brand">Tạo bài</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => navigate('/admin')}
-                  className={`flex flex-col items-center justify-center gap-1 transition ${
+                  className={`flex flex-col items-center justify-center gap-0.5 transition ${
                     isAdminPage ? 'text-teal-600 dark:text-teal-400' : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
-                  <ShieldCheck className="w-5 h-5" />
-                  <span className="text-[11px] font-bold">Quản trị</span>
+                  <ShieldCheck className="w-[18px] h-[18px]" />
+                  <span className="text-[10px] font-bold">Quản trị</span>
                 </button>
               </>
             ) : (
@@ -312,19 +312,19 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   onClick={() => setPinModalOpen(true)}
                   className="flex flex-col items-center justify-center gap-0.5"
                 >
-                  <span className="w-11 h-8 rounded-xl btn-brand flex items-center justify-center shadow-sm">
-                    <KeyRound className="w-4.5 h-4.5" />
+                  <span className="w-9 h-7 rounded-lg btn-brand flex items-center justify-center shadow-sm">
+                    <KeyRound className="w-4 h-4" />
                   </span>
-                  <span className="text-[11px] font-bold text-brand">Nhập mã</span>
+                  <span className="text-[10px] font-bold text-brand">Nhập mã</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setAdminLoginOpen(true)}
-                  className="flex flex-col items-center justify-center gap-1 text-slate-500 dark:text-slate-400"
+                  className="flex flex-col items-center justify-center gap-0.5 text-slate-500 dark:text-slate-400"
                 >
-                  <ShieldCheck className="w-5 h-5" />
-                  <span className="text-[11px] font-bold">Admin</span>
+                  <ShieldCheck className="w-[18px] h-[18px]" />
+                  <span className="text-[10px] font-bold">Admin</span>
                 </button>
               </>
             )}
