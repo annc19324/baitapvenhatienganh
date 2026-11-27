@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { apiGet, apiPut } from '../services/apiClient';
 
 const SYNC_TS_KEY = 'engwork_sync_ts';
+const PENDING_SITE_CONFIG_KEY = 'engwork_pending_site_config';
 
 export type LogoMode = 'icon' | 'image' | 'none';
 export type BackgroundMode = 'default' | 'solid' | 'gradient' | 'image';
@@ -102,8 +103,26 @@ export const SiteConfigProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return DEFAULT_SITE_CONFIG;
   });
 
-  // On mount: pull config from backend (remote wins)
+  const saveTimerRef = useRef<number | null>(null);
+
+  // On mount: flush any pending local config or pull from backend (remote wins)
   useEffect(() => {
+    const pending = localStorage.getItem(PENDING_SITE_CONFIG_KEY);
+    if (pending) {
+      try {
+        const parsed = JSON.parse(pending);
+        apiPut('/api/engwork/site-config', parsed, true).then((res) => {
+          if (res) {
+            localStorage.removeItem(PENDING_SITE_CONFIG_KEY);
+            localStorage.removeItem(SYNC_TS_KEY);
+          }
+        }).catch(() => {});
+      } catch {
+        localStorage.removeItem(PENDING_SITE_CONFIG_KEY);
+      }
+      return;
+    }
+
     apiGet<Partial<SiteConfig>>('/api/engwork/site-config').then((remote) => {
       if (remote && Object.keys(remote).length > 0) {
         setConfig((prev) => {
@@ -113,6 +132,24 @@ export const SiteConfigProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
       }
     }).catch(() => { /* offline */ });
+  }, []);
+
+  // Live sync: when background sync pulls a new siteConfig from Admin on another device
+  useEffect(() => {
+    const onSynced = (e: Event) => {
+      if (localStorage.getItem(PENDING_SITE_CONFIG_KEY) || saveTimerRef.current !== null) return;
+      const detail = (e as CustomEvent<{ siteConfig?: Partial<SiteConfig> }>).detail;
+      const remote = detail?.siteConfig;
+      if (remote && Object.keys(remote).length > 0) {
+        setConfig((prev) => {
+          const merged = { ...DEFAULT_SITE_CONFIG, ...prev, ...remote };
+          try { localStorage.setItem(SITE_CONFIG_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+          return merged;
+        });
+      }
+    };
+    window.addEventListener('engwork:synced', onSynced);
+    return () => window.removeEventListener('engwork:synced', onSynced);
   }, []);
 
   useEffect(() => {
@@ -125,20 +162,37 @@ export const SiteConfigProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [config]);
 
+  const pushSiteConfig = (next: SiteConfig) => {
+    try {
+      localStorage.setItem(PENDING_SITE_CONFIG_KEY, JSON.stringify(next));
+    } catch { /* ignore */ }
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      apiPut('/api/engwork/site-config', next, true)
+        .then((res) => {
+          if (res) {
+            localStorage.removeItem(PENDING_SITE_CONFIG_KEY);
+            localStorage.removeItem(SYNC_TS_KEY);
+          }
+        })
+        .catch(() => {});
+    }, 300);
+  };
+
   const updateConfig = (partial: Partial<SiteConfig>) => {
     setConfig((prev) => {
       const next = { ...prev, ...partial };
-      // Push to backend and invalidate sync cache so other devices re-fetch
-      apiPut('/api/engwork/site-config', next, true).catch(() => {});
-      localStorage.removeItem(SYNC_TS_KEY);
+      pushSiteConfig(next);
       return next;
     });
   };
 
   const resetConfig = () => {
     setConfig(DEFAULT_SITE_CONFIG);
-    apiPut('/api/engwork/site-config', DEFAULT_SITE_CONFIG, true).catch(() => {});
-    localStorage.removeItem(SYNC_TS_KEY);
+    pushSiteConfig(DEFAULT_SITE_CONFIG);
   };
 
   return (

@@ -79,6 +79,11 @@ export const AdminDashboardPage: React.FC = () => {
         if (ok) loadData();
       });
     }
+    const onSynced = () => {
+      if (isAdmin) loadData();
+    };
+    window.addEventListener('engwork:synced', onSynced);
+    return () => window.removeEventListener('engwork:synced', onSynced);
   }, [isAdmin]);
 
   const loadData = () => {
@@ -115,29 +120,33 @@ export const AdminDashboardPage: React.FC = () => {
     setRenameDraft(oldName);
   };
 
-  const handleConfirmRename = (oldName: string) => {
+  const handleConfirmRename = async (oldName: string) => {
     const nextName = renameDraft.trim();
     if (!nextName || nextName === oldName) {
       setRenamingStudent(null);
       return;
     }
-    const updatedCount = HomeworkStorageService.renameStudent(oldName, nextName);
+    const { count: updatedCount, synced } = await HomeworkStorageService.renameStudentAsync(oldName, nextName);
     setRenamingStudent(null);
     if (updatedCount > 0) {
       loadData();
       setExpandedStudent(nextName);
       showToast({
         message: `Đã đổi tên thành "${nextName}"`,
-        subMessage: `Cập nhật ${updatedCount} lượt nộp bài.`,
+        subMessage: `Cập nhật ${updatedCount} lượt nộp bài${synced ? ' • Đã đồng bộ' : ''}.`,
         type: 'success',
       });
     }
   };
 
-  const handleDeleteStudent = (name: string) => {
-    const removed = HomeworkStorageService.deleteStudentData(name);
+  const handleDeleteStudent = async (name: string) => {
+    const { removed, synced } = await HomeworkStorageService.deleteStudentDataAsync(name);
     loadData();
-    showToast({ message: `Đã xóa ${removed} lượt nộp bài của ${name}`, type: 'success' });
+    showToast({
+      message: `Đã xóa ${removed} lượt nộp bài của ${name}`,
+      subMessage: synced ? 'Đã đồng bộ lên máy chủ' : undefined,
+      type: 'success',
+    });
   };
 
   const handleOpenEditSubmission = (sub: HomeworkSubmission) => {
@@ -146,12 +155,12 @@ export const AdminDashboardPage: React.FC = () => {
     setEditSubScore(sub.totalScore);
   };
 
-  const handleSaveEditSubmission = (e: React.FormEvent) => {
+  const handleSaveEditSubmission = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSub || !editSubName.trim()) return;
     const clampedScore = Math.max(0, Math.min(editingSub.maxTotalScore, Number(editSubScore) || 0));
     const percentage = Math.round((clampedScore / (editingSub.maxTotalScore || 10)) * 100);
-    HomeworkStorageService.saveSubmission({
+    const { synced } = await HomeworkStorageService.saveSubmissionAsync({
       ...editingSub,
       studentName: editSubName.trim(),
       totalScore: Number(clampedScore.toFixed(1)),
@@ -160,10 +169,14 @@ export const AdminDashboardPage: React.FC = () => {
     });
     setEditingSub(null);
     loadData();
-    showToast({ message: 'Đã cập nhật điểm & thông tin bài nộp', type: 'success' });
+    showToast({
+      message: 'Đã cập nhật điểm & thông tin bài nộp',
+      subMessage: synced ? 'Đã đồng bộ lên máy chủ' : undefined,
+      type: 'success',
+    });
   };
 
-  const handleAddManualSubmission = (e: React.FormEvent) => {
+  const handleAddManualSubmission = async (e: React.FormEvent) => {
     e.preventDefault();
     const targetAssign = assignments.find((a) => a.id === newSubAssignId);
     if (!newSubName.trim() || !targetAssign) {
@@ -187,17 +200,25 @@ export const AdminDashboardPage: React.FC = () => {
       submittedAt: new Date().toISOString(),
       isReviewedByTeacher: true,
     };
-    HomeworkStorageService.saveSubmission(sub);
+    const { synced } = await HomeworkStorageService.saveSubmissionAsync(sub);
     setShowAddSubModal(false);
     setNewSubName('');
     loadData();
-    showToast({ message: 'Đã thêm điểm thi mới thành công!', type: 'success' });
+    showToast({
+      message: 'Đã thêm điểm thi mới thành công!',
+      subMessage: synced ? 'Đã đồng bộ lên máy chủ' : undefined,
+      type: 'success',
+    });
   };
 
-  const handleDeleteSubmission = (subId: string, studentName: string) => {
-    HomeworkStorageService.deleteSubmission(subId);
+  const handleDeleteSubmission = async (subId: string, studentName: string) => {
+    const { synced } = await HomeworkStorageService.deleteSubmissionAsync(subId);
     loadData();
-    showToast({ message: `Đã xóa lượt nộp bài của "${studentName}"`, type: 'success' });
+    showToast({
+      message: `Đã xóa lượt nộp bài của "${studentName}"`,
+      subMessage: synced ? 'Đã đồng bộ lên máy chủ' : undefined,
+      type: 'success',
+    });
   };
 
   const handleDeleteAssignment = async (assignId: string, title: string) => {
@@ -221,10 +242,14 @@ export const AdminDashboardPage: React.FC = () => {
     });
   };
 
-  const handleRestoreDefaults = () => {
-    HomeworkStorageService.restoreDefaultCurriculum();
+  const handleRestoreDefaults = async () => {
+    const { synced } = await HomeworkStorageService.restoreDefaultCurriculumAsync();
     loadData();
-    showToast({ message: 'Đã khôi phục bộ bài tập A–Z mặc định!', type: 'success' });
+    showToast({
+      message: 'Đã khôi phục bộ bài tập A–Z mặc định!',
+      subMessage: synced ? 'Đã đồng bộ lên máy chủ' : undefined,
+      type: 'success',
+    });
   };
 
   const handleExportCsv = () => {

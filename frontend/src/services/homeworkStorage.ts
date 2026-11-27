@@ -262,6 +262,13 @@ export class HomeworkStorageService {
         }
 
         if (remoteTs) localStorage.setItem(SYNC_TS_KEY, remoteTs);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('engwork:synced', {
+              detail: { siteConfig: remoteSiteConfig },
+            })
+          );
+        }
         return true;
       } catch {
         return false;
@@ -456,6 +463,22 @@ export class HomeworkStorageService {
     return saved;
   }
 
+  static async deleteSubmissionAsync(id: string): Promise<{ deleted: boolean; synced: boolean }> {
+    const all = localGetSubmissions();
+    const filtered = all.filter((s) => s.id !== id);
+    if (filtered.length === all.length) return { deleted: false, synced: true };
+
+    localSetSubmissions(filtered);
+    removeIdFromSet(PENDING_SUB_UPSERTS_KEY, id);
+    addIdToSet(PENDING_SUB_DELETES_KEY, id);
+    const ok = await apiDelete(`/api/engwork/submissions/${id}`);
+    if (ok) {
+      removeIdFromSet(PENDING_SUB_DELETES_KEY, id);
+      invalidateSyncCache();
+    }
+    return { deleted: true, synced: ok };
+  }
+
   static deleteSubmission(id: string): boolean {
     const all = localGetSubmissions();
     const filtered = all.filter((s) => s.id !== id);
@@ -474,6 +497,31 @@ export class HomeworkStorageService {
       return true;
     }
     return false;
+  }
+
+  static async renameStudentAsync(oldName: string, newName: string): Promise<{ count: number; synced: boolean }> {
+    const cleanOld = oldName.trim().toLowerCase();
+    const cleanNew = newName.trim();
+    if (!cleanOld || !cleanNew) return { count: 0, synced: true };
+    const all = localGetSubmissions();
+    let count = 0;
+    const updated = all.map((s) => {
+      if (s.studentName.trim().toLowerCase() === cleanOld) {
+        count++;
+        return { ...s, studentName: cleanNew };
+      }
+      return s;
+    });
+    if (count > 0) {
+      localSetSubmissions(updated);
+      const res = await apiPost('/api/engwork/submissions/rename-student', { oldName, newName }, true);
+      if (res) {
+        invalidateSyncCache();
+        return { count, synced: true };
+      }
+      return { count, synced: false };
+    }
+    return { count: 0, synced: true };
   }
 
   static renameStudent(oldName: string, newName: string): number {
@@ -498,6 +546,23 @@ export class HomeworkStorageService {
     return count;
   }
 
+  static async deleteStudentDataAsync(studentName: string): Promise<{ removed: number; synced: boolean }> {
+    const clean = studentName.trim().toLowerCase();
+    const all = localGetSubmissions();
+    const filtered = all.filter((s) => s.studentName.trim().toLowerCase() !== clean);
+    const removed = all.length - filtered.length;
+    if (removed > 0) {
+      localSetSubmissions(filtered);
+      const res = await apiPost('/api/engwork/submissions/bulk-delete', { studentName }, true);
+      if (res) {
+        invalidateSyncCache();
+        return { removed, synced: true };
+      }
+      return { removed, synced: false };
+    }
+    return { removed: 0, synced: true };
+  }
+
   static deleteStudentData(studentName: string): number {
     const clean = studentName.trim().toLowerCase();
     const all = localGetSubmissions();
@@ -510,6 +575,20 @@ export class HomeworkStorageService {
         .catch(() => {});
     }
     return removed;
+  }
+
+  static async restoreDefaultCurriculumAsync(): Promise<{ synced: boolean }> {
+    const existing = localGetAssignments();
+    const customOnes = existing.filter((a) => !a.id.startsWith('seed-hw-'));
+    const seeded = buildSeededAssignments();
+    const merged = [...customOnes, ...seeded];
+    localSetAssignments(merged);
+    const res = await apiPost('/api/engwork/assignments/bulk?force=true', seeded, true);
+    if (res) {
+      invalidateSyncCache();
+      return { synced: true };
+    }
+    return { synced: false };
   }
 
   static restoreDefaultCurriculum(): void {

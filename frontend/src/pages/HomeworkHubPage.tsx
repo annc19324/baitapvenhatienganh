@@ -55,6 +55,12 @@ export const HomeworkHubPage: React.FC = () => {
     });
     // Also set immediately from cache for instant display
     setAssignments(HomeworkStorageService.getAssignments());
+
+    const onSynced = () => {
+      setAssignments(HomeworkStorageService.getAssignments());
+    };
+    window.addEventListener('engwork:synced', onSynced);
+    return () => window.removeEventListener('engwork:synced', onSynced);
   }, []);
 
   useEffect(() => {
