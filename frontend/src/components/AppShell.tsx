@@ -134,7 +134,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
             <div className="text-left min-w-0">
               <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white block leading-none truncate">
-                {config.brandName || 'EngWork'}
+                {config.brandName || 'Zeanokai'}
               </span>
               {(isDoPage || config.brandSubtitle) && (
                 <span className="text-[10px] font-semibold text-slate-400 block truncate mt-0.5">
@@ -158,7 +158,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                   }`}
                 >
                   <BookOpen className="w-4 h-4" />
-                  <span>Bài tập A–Z</span>
+                  <span>Bài tập</span>
                 </button>
 
                 {isAdmin && (

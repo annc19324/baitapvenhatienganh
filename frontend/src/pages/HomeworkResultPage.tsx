@@ -94,7 +94,7 @@ export const HomeworkResultPage: React.FC = () => {
             className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-blue-600 transition"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Về bài tập A–Z</span>
+            <span>Về bài tập</span>
           </button>
 
           {isAdmin && (

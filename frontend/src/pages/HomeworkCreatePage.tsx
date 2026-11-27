@@ -420,7 +420,7 @@ export const HomeworkCreatePage: React.FC = () => {
             >
               {EDUCATION_LEVELS.map((lvl) => (
                 <option key={lvl.id} value={lvl.id}>
-                  {lvl.emoji} {lvl.label}
+                  {lvl.label}
                 </option>
               ))}
             </select>
@@ -632,7 +632,7 @@ export const HomeworkCreatePage: React.FC = () => {
               <p className="font-bold">Hướng dẫn định dạng:</p>
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
-                  <p className="font-semibold mb-1">📝 Trắc nghiệm (MCQ / nhiều đáp án):</p>
+                  <p className="font-semibold mb-1">Trắc nghiệm (MCQ / nhiều đáp án):</p>
                   <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`Đề bài câu 1:
 A. Lựa chọn A
 *B. Lựa chọn B  ← dấu * = đáp án đúng
@@ -645,26 +645,26 @@ D. Lựa chọn D
                 </div>
                 <div className="space-y-2">
                   <div>
-                    <p className="font-semibold mb-1">✏️ Điền vào chỗ trống:</p>
+                    <p className="font-semibold mb-1">Điền vào chỗ trống:</p>
                     <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[ĐIỀN] She [has worked] here for [five] years.`}</pre>
                   </div>
                   <div>
-                    <p className="font-semibold mb-1">🔗 Nối cột:</p>
+                    <p className="font-semibold mb-1">Nối cột:</p>
                     <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[NỐI]
 Give up :: Từ bỏ
 Break down :: Hỏng hóc`}</pre>
                   </div>
                   <div>
-                    <p className="font-semibold mb-1">🔀 Sắp xếp câu:</p>
+                    <p className="font-semibold mb-1">Sắp xếp câu:</p>
                     <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[SẮP XẾP] English is very useful.`}</pre>
                   </div>
                   <div>
-                    <p className="font-semibold mb-1">🔍 Sửa lỗi:</p>
+                    <p className="font-semibold mb-1">Sửa lỗi:</p>
                     <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[SỬA LỖI] She (A)don't (B)like apples.
 ĐÁP ÁN: A -> doesn't`}</pre>
                   </div>
                   <div>
-                    <p className="font-semibold mb-1">📄 Tự luận:</p>
+                    <p className="font-semibold mb-1">Tự luận:</p>
                     <pre className="font-mono bg-blue-100/60 dark:bg-blue-900/40 rounded p-2 text-[10px] leading-relaxed whitespace-pre-wrap">{`[TỰ LUẬN] Write about your hobby. (tối thiểu: 40 tối đa: 100)`}</pre>
                   </div>
                 </div>

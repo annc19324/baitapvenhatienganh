@@ -157,8 +157,6 @@ export const HomeworkHubPage: React.FC = () => {
     });
   }, [assignments, selectedLevel, searchQuery]);
 
-  const activeLevelMeta = selectedLevel !== 'ALL' ? EDUCATION_LEVEL_MAP[selectedLevel] : null;
-
   return (
     <div className="space-y-4 sm:space-y-7 animate-fade-in">
       {/* ================= CUSTOMIZABLE HERO BANNER ================= */}
@@ -300,12 +298,13 @@ export const HomeworkHubPage: React.FC = () => {
                 : 'surface-card text-slate-600 dark:text-slate-300 hover:border-slate-300'
             }`}
           >
-            Tất cả A–Z ({assignments.length})
+            Tất cả ({assignments.length})
           </button>
 
           {EDUCATION_LEVELS.map((lvl) => {
             const count = assignments.filter((a) => a.levelId === lvl.id).length;
             const active = selectedLevel === lvl.id;
+            const LvlIcon = lvl.icon;
             return (
               <button
                 key={lvl.id}
@@ -317,7 +316,7 @@ export const HomeworkHubPage: React.FC = () => {
                     : 'surface-card text-slate-700 dark:text-slate-300 hover:border-slate-300'
                 }`}
               >
-                <span>{lvl.emoji}</span>
+                <LvlIcon className="w-3.5 h-3.5 shrink-0" />
                 <span>{lvl.shortLabel}</span>
                 <span className={`text-[11px] ${active ? 'opacity-85' : 'text-slate-400'}`}>
                   ({count})
@@ -326,18 +325,6 @@ export const HomeworkHubPage: React.FC = () => {
             );
           })}
         </div>
-
-        {activeLevelMeta && (
-          <div className="p-3 rounded-xl sm:rounded-2xl surface-card flex items-center gap-2 text-xs sm:text-sm">
-            <span className="text-base sm:text-lg">{activeLevelMeta.emoji}</span>
-            <p className="text-slate-700 dark:text-slate-200">
-              <strong className="text-slate-900 dark:text-white">
-                {activeLevelMeta.label} ({activeLevelMeta.cefr}):
-              </strong>{' '}
-              {activeLevelMeta.description}
-            </p>
-          </div>
-        )}
       </section>
 
       {/* ================= SEARCH & VIEW MODE ================= */}
@@ -413,7 +400,7 @@ export const HomeworkHubPage: React.FC = () => {
               }}
               className="text-xs font-bold text-brand hover:underline"
             >
-              Xem toàn bộ lộ trình A–Z
+              Xem tất cả
             </button>
           </div>
         ) : viewMode === 'grid' ? (

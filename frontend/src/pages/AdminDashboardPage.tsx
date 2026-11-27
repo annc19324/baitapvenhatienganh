@@ -246,7 +246,7 @@ export const AdminDashboardPage: React.FC = () => {
     const { synced } = await HomeworkStorageService.restoreDefaultCurriculumAsync();
     loadData();
     showToast({
-      message: 'Đã khôi phục bộ bài tập A–Z mặc định!',
+      message: 'Đã khôi phục bộ bài tập mặc định!',
       subMessage: synced ? 'Đã đồng bộ lên máy chủ' : undefined,
       type: 'success',
     });
@@ -259,7 +259,7 @@ export const AdminDashboardPage: React.FC = () => {
     });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `Diem_thi_EngWork_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `Diem_thi_Zeanokai_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     showToast({ message: 'Đã xuất bảng điểm CSV thành công', type: 'success' });
   };
@@ -544,14 +544,14 @@ export const AdminDashboardPage: React.FC = () => {
                   <option value="ALL">Mọi trình độ</option>
                   {EDUCATION_LEVELS.map((lvl) => (
                     <option key={lvl.id} value={lvl.id}>
-                      {lvl.emoji} {lvl.label}
+                      {lvl.label}
                     </option>
                   ))}
                 </select>
                 <button
                   type="button"
                   onClick={handleRestoreDefaults}
-                  title="Khôi phục 12 bài A-Z mặc định"
+                  title="Khôi phục bài mẫu mặc định"
                   className="px-3 py-2.5 surface-card rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-brand flex items-center gap-1 shrink-0"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
