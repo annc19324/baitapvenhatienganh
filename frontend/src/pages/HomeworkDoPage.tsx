@@ -14,6 +14,10 @@ import {
   ChevronDown,
   ChevronUp,
   Lock,
+  XCircle,
+  BookOpenCheck,
+  ClipboardCheck,
+  Check,
 } from 'lucide-react';
 import { HomeworkStorageService } from '../services/homeworkStorage';
 import { HomeworkAiService } from '../services/homeworkAi';
@@ -49,6 +53,8 @@ export const HomeworkDoPage: React.FC = () => {
 
   const [assignment, setAssignment] = useState<HomeworkAssignment | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
+  const [mode, setMode] = useState<'PRACTICE' | 'EXAM'>('PRACTICE');
+  const [checkedQuestions, setCheckedQuestions] = useState<Record<string, boolean>>({});
   const [studentName, setStudentName] = useState(savedName);
   const [showTheory, setShowTheory] = useState(false);
 
@@ -390,11 +396,54 @@ export const HomeworkDoPage: React.FC = () => {
               />
             </div>
 
+            <div>
+              <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                Chọn chế độ làm bài
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setMode('PRACTICE')}
+                  className={`p-3 rounded-2xl border text-left transition ${
+                    mode === 'PRACTICE'
+                      ? 'bg-emerald-50/90 dark:bg-emerald-950/50 border-emerald-500 ring-2 ring-emerald-500/20'
+                      : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white">
+                    <BookOpenCheck className={`w-4 h-4 ${mode === 'PRACTICE' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span>Ôn tập</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                    Chọn xong hiện ngay đúng / sai
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMode('EXAM')}
+                  className={`p-3 rounded-2xl border text-left transition ${
+                    mode === 'EXAM'
+                      ? 'bg-blue-50/90 dark:bg-blue-950/50 border-blue-500 ring-2 ring-blue-500/20'
+                      : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white">
+                    <ClipboardCheck className={`w-4 h-4 ${mode === 'EXAM' ? 'text-blue-600' : 'text-slate-400'}`} />
+                    <span>Kiểm tra</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                    Nộp bài xong mới hiện đáp án
+                  </p>
+                </button>
+              </div>
+            </div>
+
             <button
               type="submit"
               className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-extrabold text-sm rounded-2xl shadow-glow-blue transition flex items-center justify-center gap-2"
             >
-              <span>Bắt Đầu Làm Bài</span>
+              <span>{mode === 'PRACTICE' ? 'Bắt Đầu Ôn Tập' : 'Bắt Đầu Kiểm Tra'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -485,9 +534,20 @@ export const HomeworkDoPage: React.FC = () => {
       <div className="surface-card rounded-2xl overflow-hidden sticky top-[3.75rem] sm:top-[4.25rem] z-30">
         <div className="p-3.5 sm:p-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
-              {assignment.title}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                {assignment.title}
+              </h2>
+              <span
+                className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold shrink-0 ${
+                  mode === 'PRACTICE'
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'
+                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300'
+                }`}
+              >
+                {mode === 'PRACTICE' ? 'Ôn tập' : 'Kiểm tra'}
+              </span>
+            </div>
             <p className="text-[11px] text-slate-500 truncate">
               {studentName} • Đã làm {answeredCount}/{totalQ} câu
             </p>
@@ -548,31 +608,83 @@ export const HomeworkDoPage: React.FC = () => {
             {(currentQ.type === 'MULTIPLE_CHOICE' || currentQ.type === 'PRONUNCIATION') && currentQ.options && (
               <div className="space-y-2.5">
                 {currentQ.options.map((option, optIdx) => {
-                  const isSelected = answers[currentQ.id] === optIdx;
+                  const chosen = answers[currentQ.id];
+                  const hasChosen = chosen !== undefined;
+                  const isSelected = chosen === optIdx;
+                  const isCorrectOpt = currentQ.correctOptionIndex === optIdx;
+                  const showFeedback = mode === 'PRACTICE' && hasChosen;
+
+                  let cardCls =
+                    'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-blue-300 text-slate-800 dark:text-slate-200 font-semibold';
+                  let badgeCls =
+                    'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600';
+
+                  if (showFeedback) {
+                    if (isCorrectOpt) {
+                      cardCls =
+                        'bg-emerald-50/95 dark:bg-emerald-950/60 border-emerald-500 text-emerald-950 dark:text-emerald-100 font-bold ring-2 ring-emerald-500/20';
+                      badgeCls = 'bg-emerald-600 text-white';
+                    } else if (isSelected) {
+                      cardCls =
+                        'bg-rose-50/95 dark:bg-rose-950/60 border-rose-500 text-rose-950 dark:text-rose-100 font-bold ring-2 ring-rose-500/20';
+                      badgeCls = 'bg-rose-600 text-white';
+                    }
+                  } else if (isSelected) {
+                    cardCls =
+                      'bg-blue-50/90 dark:bg-blue-950/60 border-blue-600 text-blue-950 dark:text-blue-100 font-bold ring-2 ring-blue-500/20';
+                    badgeCls = 'bg-blue-600 text-white';
+                  }
+
                   return (
                     <button
                       key={optIdx}
                       type="button"
                       onClick={() => setAnswers((prev) => ({ ...prev, [currentQ.id]: optIdx }))}
-                      className={`w-full min-h-[54px] p-3.5 sm:p-4 rounded-2xl border text-left flex items-center gap-3.5 transition active:scale-[0.99] ${
-                        isSelected
-                          ? 'bg-blue-50/90 dark:bg-blue-950/60 border-blue-600 text-blue-950 dark:text-blue-100 font-bold ring-2 ring-blue-500/20'
-                          : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-blue-300 text-slate-800 dark:text-slate-200 font-semibold'
-                      }`}
+                      className={`w-full min-h-[54px] p-3.5 sm:p-4 rounded-2xl border text-left flex items-center justify-between gap-3 transition active:scale-[0.99] ${cardCls}`}
                     >
-                      <span
-                        className={`w-8 h-8 rounded-xl font-extrabold text-xs flex items-center justify-center shrink-0 ${
-                          isSelected
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
-                        }`}
-                      >
-                        {String.fromCharCode(65 + optIdx)}
-                      </span>
-                      <span className="text-sm sm:text-[15px] leading-relaxed">{option}</span>
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <span
+                          className={`w-8 h-8 rounded-xl font-extrabold text-xs flex items-center justify-center shrink-0 ${badgeCls}`}
+                        >
+                          {String.fromCharCode(65 + optIdx)}
+                        </span>
+                        <span className="text-sm sm:text-[15px] leading-relaxed">{option}</span>
+                      </div>
+                      {showFeedback && isCorrectOpt && (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      )}
+                      {showFeedback && isSelected && !isCorrectOpt && (
+                        <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                      )}
                     </button>
                   );
                 })}
+
+                {mode === 'PRACTICE' && answers[currentQ.id] !== undefined && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold flex items-start gap-2 ${
+                      answers[currentQ.id] === currentQ.correctOptionIndex
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                    }`}
+                  >
+                    {answers[currentQ.id] === currentQ.correctOptionIndex ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                    ) : (
+                      <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    )}
+                    <div className="space-y-0.5">
+                      <p>
+                        {answers[currentQ.id] === currentQ.correctOptionIndex
+                          ? 'Chính xác!'
+                          : `Chưa đúng. Đáp án đúng là ${String.fromCharCode(65 + (currentQ.correctOptionIndex || 0))}.`}
+                      </p>
+                      {currentQ.explanation && (
+                        <p className="font-normal opacity-90">{currentQ.explanation}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -585,6 +697,31 @@ export const HomeworkDoPage: React.FC = () => {
                 {currentQ.options.map((option, optIdx) => {
                   const selectedList: number[] = Array.isArray(answers[currentQ.id]) ? answers[currentQ.id] : [];
                   const isSelected = selectedList.includes(optIdx);
+                  const correctList = currentQ.correctOptionIndices || [];
+                  const isCorrectOpt = correctList.includes(optIdx);
+                  const showOptFeedback = mode === 'PRACTICE' && isSelected;
+
+                  let cardCls =
+                    'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-indigo-300 text-slate-800 dark:text-slate-200 font-semibold';
+                  let badgeCls =
+                    'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600';
+
+                  if (showOptFeedback) {
+                    if (isCorrectOpt) {
+                      cardCls =
+                        'bg-emerald-50/95 dark:bg-emerald-950/60 border-emerald-500 text-emerald-950 dark:text-emerald-100 font-bold ring-2 ring-emerald-500/20';
+                      badgeCls = 'bg-emerald-600 text-white';
+                    } else {
+                      cardCls =
+                        'bg-rose-50/95 dark:bg-rose-950/60 border-rose-500 text-rose-950 dark:text-rose-100 font-bold ring-2 ring-rose-500/20';
+                      badgeCls = 'bg-rose-600 text-white';
+                    }
+                  } else if (isSelected) {
+                    cardCls =
+                      'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-600 text-indigo-950 dark:text-indigo-100 font-bold ring-2 ring-indigo-500/20';
+                    badgeCls = 'bg-indigo-600 text-white';
+                  }
+
                   return (
                     <button
                       key={optIdx}
@@ -598,43 +735,112 @@ export const HomeworkDoPage: React.FC = () => {
                           return { ...prev, [currentQ.id]: next };
                         })
                       }
-                      className={`w-full min-h-[54px] p-3.5 sm:p-4 rounded-2xl border text-left flex items-center gap-3.5 transition active:scale-[0.99] ${
-                        isSelected
-                          ? 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-600 text-indigo-950 dark:text-indigo-100 font-bold ring-2 ring-indigo-500/20'
-                          : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-indigo-300 text-slate-800 dark:text-slate-200 font-semibold'
-                      }`}
+                      className={`w-full min-h-[54px] p-3.5 sm:p-4 rounded-2xl border text-left flex items-center justify-between gap-3 transition active:scale-[0.99] ${cardCls}`}
                     >
-                      <span
-                        className={`w-8 h-8 rounded-xl font-extrabold text-xs flex items-center justify-center shrink-0 ${
-                          isSelected
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
-                        }`}
-                      >
-                        {isSelected ? '✓' : String.fromCharCode(65 + optIdx)}
-                      </span>
-                      <span className="text-sm sm:text-[15px] leading-relaxed">{option}</span>
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <span
+                          className={`w-8 h-8 rounded-xl font-extrabold text-xs flex items-center justify-center shrink-0 ${badgeCls}`}
+                        >
+                          {isSelected ? <Check className="w-4 h-4" /> : String.fromCharCode(65 + optIdx)}
+                        </span>
+                        <span className="text-sm sm:text-[15px] leading-relaxed">{option}</span>
+                      </div>
+                      {showOptFeedback && isCorrectOpt && (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      )}
+                      {showOptFeedback && !isCorrectOpt && (
+                        <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                      )}
                     </button>
                   );
                 })}
+                {mode === 'PRACTICE' && Array.isArray(answers[currentQ.id]) && answers[currentQ.id].length > 0 && (() => {
+                  const expected = [...(currentQ.correctOptionIndices || [])].sort((a, b) => a - b);
+                  const given = [...answers[currentQ.id]].sort((a, b) => a - b);
+                  const isExact = expected.length === given.length && expected.every((v, i) => v === given[i]);
+                  const wrongPicked = given.some((v) => !expected.includes(v));
+                  return (
+                    <div
+                      className={`p-3 rounded-xl text-xs font-bold flex items-start gap-2 ${
+                        isExact
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                          : wrongPicked
+                          ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                          : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                      }`}
+                    >
+                      {isExact ? (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                      ) : (
+                        <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <p>
+                          {isExact
+                            ? 'Chính xác tất cả các đáp án!'
+                            : wrongPicked
+                            ? `Có lựa chọn chưa đúng. Đáp án đúng gồm: ${expected.map((i) => String.fromCharCode(65 + i)).join(', ')}`
+                            : `Đúng rồi! Còn thiếu ${expected.length - given.length} đáp án đúng nữa.`}
+                        </p>
+                        {currentQ.explanation && <p className="font-normal opacity-90 mt-0.5">{currentQ.explanation}</p>}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
             {/* FILL_BLANK */}
             {currentQ.type === 'FILL_BLANK' && (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {currentQ.sentenceWithBlanks && (
                   <div className="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700">
                     {renderFillBlankSentence(currentQ.sentenceWithBlanks)}
                   </div>
                 )}
-                <input
-                  type="text"
-                  placeholder="Nhập từ cần điền..."
-                  value={answers[currentQ.id] || ''}
-                  onChange={(e) => setAnswers((prev) => ({ ...prev, [currentQ.id]: e.target.value }))}
-                  className="w-full px-4 py-3.5 bg-white dark:bg-slate-800 border-2 border-blue-500/40 focus:border-blue-600 rounded-2xl text-base font-bold text-slate-900 dark:text-white focus:outline-none"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nhập từ cần điền..."
+                    value={answers[currentQ.id] || ''}
+                    onChange={(e) => {
+                      setAnswers((prev) => ({ ...prev, [currentQ.id]: e.target.value }));
+                      if (checkedQuestions[currentQ.id]) {
+                        setCheckedQuestions((prev) => ({ ...prev, [currentQ.id]: false }));
+                      }
+                    }}
+                    className="flex-1 min-w-0 px-4 py-3 bg-white dark:bg-slate-800 border-2 border-blue-500/40 focus:border-blue-600 rounded-2xl text-sm sm:text-base font-bold text-slate-900 dark:text-white focus:outline-none"
+                  />
+                  {mode === 'PRACTICE' && (
+                    <button
+                      type="button"
+                      onClick={() => setCheckedQuestions((prev) => ({ ...prev, [currentQ.id]: true }))}
+                      className="px-4 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shrink-0"
+                    >
+                      Kiểm tra
+                    </button>
+                  )}
+                </div>
+                {mode === 'PRACTICE' && checkedQuestions[currentQ.id] && (() => {
+                  const accepted = (currentQ.acceptedAnswers || []).map((a) => a.trim().toLowerCase());
+                  const given = (typeof answers[currentQ.id] === 'string' ? answers[currentQ.id] : '').trim().toLowerCase();
+                  const isOk = accepted.includes(given) || (accepted.length === 0 && given.length > 0);
+                  return (
+                    <div
+                      className={`p-3 rounded-xl text-xs font-bold flex items-start gap-2 ${
+                        isOk
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                          : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                      }`}
+                    >
+                      {isOk ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
+                      <div>
+                        <p>{isOk ? 'Chính xác!' : `Chưa đúng. Đáp án: ${(currentQ.acceptedAnswers || []).join(' / ')}`}</p>
+                        {currentQ.explanation && <p className="font-normal opacity-90 mt-0.5">{currentQ.explanation}</p>}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -715,40 +921,82 @@ export const HomeworkDoPage: React.FC = () => {
                     );
                   })}
                 </div>
+
+                {mode === 'PRACTICE' &&
+                  (currentQ.words || []).length > 0 &&
+                  usedWordIndices.length === (currentQ.words || []).length &&
+                  (() => {
+                    const expected = (currentQ.correctSentence || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const given = (typeof answers[currentQ.id] === 'string' ? answers[currentQ.id] : '')
+                      .replace(/\s+/g, ' ')
+                      .trim()
+                      .toLowerCase();
+                    const isOk = expected === given;
+                    return (
+                      <div
+                        className={`p-3 rounded-xl text-xs font-bold flex items-start gap-2 ${
+                          isOk
+                            ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                            : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                        }`}
+                      >
+                        {isOk ? (
+                          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                        ) : (
+                          <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        )}
+                        <div>
+                          <p>{isOk ? 'Chính xác!' : `Chưa đúng. Đáp án: ${currentQ.correctSentence}`}</p>
+                          {currentQ.explanation && <p className="font-normal opacity-90 mt-0.5">{currentQ.explanation}</p>}
+                        </div>
+                      </div>
+                    );
+                  })()}
               </div>
             )}
 
             {/* MATCHING */}
             {currentQ.type === 'MATCHING' && currentQ.pairs && (
               <div className="space-y-2.5">
-                {currentQ.pairs.map((p, pIdx) => (
-                  <div
-                    key={pIdx}
-                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                  >
-                    <span className="font-bold text-sm text-slate-900 dark:text-white sm:w-1/2">
-                      {pIdx + 1}. {p.left}
-                    </span>
-                    <select
-                      value={(answers[currentQ.id] || {})[p.left] || ''}
-                      onChange={(e) => {
-                        const prevMap = answers[currentQ.id] || {};
-                        setAnswers((prev) => ({
-                          ...prev,
-                          [currentQ.id]: { ...prevMap, [p.left]: e.target.value },
-                        }));
-                      }}
-                      className="w-full sm:w-1/2 px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-base sm:text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                {currentQ.pairs.map((p, pIdx) => {
+                  const chosenRight = (answers[currentQ.id] || {})[p.left] || '';
+                  const showMatchFeedback = mode === 'PRACTICE' && Boolean(chosenRight);
+                  const isMatchOk = chosenRight === p.right;
+                  return (
+                    <div
+                      key={pIdx}
+                      className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                        showMatchFeedback
+                          ? isMatchOk
+                            ? 'bg-emerald-50/90 dark:bg-emerald-950/50 border-emerald-500'
+                            : 'bg-rose-50/90 dark:bg-rose-950/50 border-rose-500'
+                          : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200/80 dark:border-slate-700'
+                      }`}
                     >
-                      <option value="">-- Chọn đáp án nối --</option>
-                      {currentQ.pairs?.map((rightP, rIdx) => (
-                        <option key={rIdx} value={rightP.right}>
-                          {rightP.right}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
+                      <span className="font-bold text-sm text-slate-900 dark:text-white sm:w-1/2">
+                        {pIdx + 1}. {p.left}
+                      </span>
+                      <select
+                        value={chosenRight}
+                        onChange={(e) => {
+                          const prevMap = answers[currentQ.id] || {};
+                          setAnswers((prev) => ({
+                            ...prev,
+                            [currentQ.id]: { ...prevMap, [p.left]: e.target.value },
+                          }));
+                        }}
+                        className="w-full sm:w-1/2 px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm sm:text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- Chọn đáp án nối --</option>
+                        {currentQ.pairs?.map((rightP, rIdx) => (
+                          <option key={rIdx} value={rightP.right}>
+                            {rightP.right}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -761,7 +1009,23 @@ export const HomeworkDoPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {currentQ.errorOptions.map((opt) => {
-                    const isSelected = (answers[currentQ.id] || {}).option === opt.label;
+                    const chosenOpt = (answers[currentQ.id] || {}).option;
+                    const isSelected = chosenOpt === opt.label;
+                    const isCorrectOpt = currentQ.correctOption === opt.label;
+                    const showErrFeedback = mode === 'PRACTICE' && Boolean(chosenOpt);
+
+                    let btnCls =
+                      'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200';
+                    if (showErrFeedback) {
+                      if (isCorrectOpt) {
+                        btnCls = 'bg-emerald-50 border-emerald-500 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-200 ring-2 ring-emerald-500/20';
+                      } else if (isSelected) {
+                        btnCls = 'bg-rose-50 border-rose-500 text-rose-700 dark:bg-rose-950/80 dark:text-rose-200 ring-2 ring-rose-500/20';
+                      }
+                    } else if (isSelected) {
+                      btnCls = 'bg-rose-50 border-rose-500 text-rose-700 dark:bg-rose-950/80 dark:text-rose-200 ring-2 ring-rose-500/20';
+                    }
+
                     return (
                       <button
                         key={opt.label}
@@ -772,17 +1036,37 @@ export const HomeworkDoPage: React.FC = () => {
                             [currentQ.id]: { ...(prev[currentQ.id] || {}), option: opt.label },
                           }))
                         }
-                        className={`p-3 rounded-xl border font-bold text-xs sm:text-sm transition ${
-                          isSelected
-                            ? 'bg-rose-50 border-rose-500 text-rose-700 dark:bg-rose-950/80 dark:text-rose-200 ring-2 ring-rose-500/20'
-                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
-                        }`}
+                        className={`p-3 rounded-xl border font-bold text-xs sm:text-sm transition ${btnCls}`}
                       >
                         ({opt.label}) {opt.text}
                       </button>
                     );
                   })}
                 </div>
+
+                {mode === 'PRACTICE' && (answers[currentQ.id] || {}).option && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold flex items-start gap-2 ${
+                      (answers[currentQ.id] || {}).option === currentQ.correctOption
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                    }`}
+                  >
+                    {(answers[currentQ.id] || {}).option === currentQ.correctOption ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                    ) : (
+                      <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      <p>
+                        {(answers[currentQ.id] || {}).option === currentQ.correctOption
+                          ? `Chính xác! Sửa thành "${currentQ.correction || ''}"`
+                          : `Chưa đúng. Lỗi ở (${currentQ.correctOption}) -> sửa thành "${currentQ.correction || ''}"`}
+                      </p>
+                      {currentQ.explanation && <p className="font-normal opacity-90 mt-0.5">{currentQ.explanation}</p>}
+                    </div>
+                  </div>
+                )}
 
                 <input
                   type="text"
