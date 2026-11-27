@@ -57,6 +57,10 @@ export const AdminDashboardPage: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState<EducationLevelId | 'ALL'>('ALL');
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
 
+  // Inline rename student state
+  const [renamingStudent, setRenamingStudent] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
   // Edit Submission Modal state
   const [editingSub, setEditingSub] = useState<HomeworkSubmission | null>(null);
   const [editSubName, setEditSubName] = useState('');
@@ -106,15 +110,24 @@ export const AdminDashboardPage: React.FC = () => {
     navigate('/homework');
   };
 
-  const handleRenameStudent = (oldName: string) => {
-    const nextName = window.prompt(`Nhập tên mới thay cho "${oldName}":`, oldName);
-    if (!nextName || !nextName.trim() || nextName.trim() === oldName) return;
+  const handleStartRename = (oldName: string) => {
+    setRenamingStudent(oldName);
+    setRenameDraft(oldName);
+  };
+
+  const handleConfirmRename = (oldName: string) => {
+    const nextName = renameDraft.trim();
+    if (!nextName || nextName === oldName) {
+      setRenamingStudent(null);
+      return;
+    }
     const updatedCount = HomeworkStorageService.renameStudent(oldName, nextName);
+    setRenamingStudent(null);
     if (updatedCount > 0) {
       loadData();
-      setExpandedStudent(nextName.trim());
+      setExpandedStudent(nextName);
       showToast({
-        message: `Đã đổi tên thành "${nextName.trim()}"`,
+        message: `Đã đổi tên thành "${nextName}"`,
         subMessage: `Cập nhật ${updatedCount} lượt nộp bài.`,
         type: 'success',
       });
@@ -122,11 +135,9 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   const handleDeleteStudent = (name: string) => {
-    if (window.confirm(`Xóa toàn bộ dữ liệu và lịch sử điểm thi của "${name}"?`)) {
-      const removed = HomeworkStorageService.deleteStudentData(name);
-      loadData();
-      showToast({ message: `Đã xóa ${removed} lượt nộp bài của ${name}`, type: 'success' });
-    }
+    const removed = HomeworkStorageService.deleteStudentData(name);
+    loadData();
+    showToast({ message: `Đã xóa ${removed} lượt nộp bài của ${name}`, type: 'success' });
   };
 
   const handleOpenEditSubmission = (sub: HomeworkSubmission) => {
@@ -184,23 +195,19 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   const handleDeleteSubmission = (subId: string, studentName: string) => {
-    if (window.confirm(`Xóa kết quả bài làm của "${studentName}"?`)) {
-      HomeworkStorageService.deleteSubmission(subId);
-      loadData();
-      showToast({ message: 'Đã xóa lượt nộp bài', type: 'success' });
-    }
+    HomeworkStorageService.deleteSubmission(subId);
+    loadData();
+    showToast({ message: `Đã xóa lượt nộp bài của "${studentName}"`, type: 'success' });
   };
 
   const handleDeleteAssignment = async (assignId: string, title: string) => {
-    if (window.confirm(`Xóa bài tập "${title}"?`)) {
-      const { synced } = await HomeworkStorageService.deleteAssignmentAsync(assignId);
-      loadData();
-      showToast({
-        message: 'Đã xóa bài tập',
-        subMessage: synced ? 'Đã đồng bộ xóa lên máy chủ' : 'Đã xóa trên máy (đang chờ đồng bộ)',
-        type: synced ? 'success' : 'info',
-      });
-    }
+    const { synced } = await HomeworkStorageService.deleteAssignmentAsync(assignId);
+    loadData();
+    showToast({
+      message: `Đã xóa bài tập "${title}"`,
+      subMessage: synced ? 'Đã đồng bộ xóa lên máy chủ' : 'Đã xóa trên máy (đang chờ đồng bộ)',
+      type: synced ? 'success' : 'info',
+    });
   };
 
   const handleToggleAssignmentStatus = async (assign: HomeworkAssignment) => {
@@ -215,11 +222,9 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   const handleRestoreDefaults = () => {
-    if (window.confirm('Khôi phục lại 12 bài học & bài tập mẫu A–Z mặc định (giữ nguyên các bài bạn tự tạo)?')) {
-      HomeworkStorageService.restoreDefaultCurriculum();
-      loadData();
-      showToast({ message: 'Đã khôi phục bộ bài tập A–Z mặc định!', type: 'success' });
-    }
+    HomeworkStorageService.restoreDefaultCurriculum();
+    loadData();
+    showToast({ message: 'Đã khôi phục bộ bài tập A–Z mặc định!', type: 'success' });
   };
 
   const handleExportCsv = () => {
@@ -554,10 +559,43 @@ export const AdminDashboardPage: React.FC = () => {
                       <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/70 text-brand flex items-center justify-center font-extrabold text-sm shrink-0">
                         <UserIcon className="w-5 h-5" />
                       </div>
-                      <div className="min-w-0">
-                        <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white truncate">
-                          {stu.studentName}
-                        </h3>
+                      <div className="min-w-0 flex-1">
+                        {renamingStudent === stu.studentName ? (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1.5"
+                          >
+                            <input
+                              type="text"
+                              value={renameDraft}
+                              onChange={(e) => setRenameDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleConfirmRename(stu.studentName);
+                                if (e.key === 'Escape') setRenamingStudent(null);
+                              }}
+                              autoFocus
+                              className="px-2.5 py-1 text-sm font-bold rounded-lg border border-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmRename(stu.studentName)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold"
+                            >
+                              Lưu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRenamingStudent(null)}
+                              className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-xs font-bold"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        ) : (
+                          <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white truncate">
+                            {stu.studentName}
+                          </h3>
+                        )}
                         <p className="text-xs text-slate-500 mt-0.5">
                           {stu.attemptCount} lượt làm • TB: <strong>{stu.averagePercentage}%</strong> • Cao nhất:{' '}
                           <strong>{stu.highestPercentage}%</strong>
@@ -568,7 +606,7 @@ export const AdminDashboardPage: React.FC = () => {
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => handleRenameStudent(stu.studentName)}
+                        onClick={() => handleStartRename(stu.studentName)}
                         title="Đổi tên học sinh"
                         className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-brand"
                       >

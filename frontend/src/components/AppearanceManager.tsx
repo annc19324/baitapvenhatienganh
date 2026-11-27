@@ -85,10 +85,8 @@ export const AppearanceManager: React.FC = () => {
   };
 
   const handleResetAll = () => {
-    if (window.confirm('Khôi phục toàn bộ Logo, Màu sắc, Banner và Hình nền về mặc định?')) {
-      resetConfig();
-      showToast({ message: 'Đã khôi phục giao diện mặc định', type: 'info' });
-    }
+    resetConfig();
+    showToast({ message: 'Đã khôi phục giao diện mặc định', type: 'info' });
   };
 
   return (

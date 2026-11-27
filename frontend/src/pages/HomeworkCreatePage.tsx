@@ -32,6 +32,7 @@ import { EDUCATION_LEVELS, EDUCATION_LEVEL_MAP } from '../components/EducationLe
 
 const CREATABLE_TYPES: HomeworkQuestionType[] = [
   'MULTIPLE_CHOICE',
+  'MULTI_SELECT',
   'FILL_BLANK',
   'WORD_REORDER',
   'MATCHING',
@@ -192,6 +193,10 @@ export const HomeworkCreatePage: React.FC = () => {
           : 'Chọn đáp án đúng nhất để hoàn thành câu sau:';
       newQ.options = ['', '', '', ''];
       newQ.correctOptionIndex = 0;
+    } else if (type === 'MULTI_SELECT') {
+      newQ.prompt = 'Chọn TẤT CẢ các đáp án đúng:';
+      newQ.options = ['', '', '', ''];
+      newQ.correctOptionIndices = [0];
     } else if (type === 'FILL_BLANK') {
       newQ.prompt = 'Điền từ thích hợp vào chỗ trống:';
       newQ.sentenceWithBlanks = 'She is interested [in] learning English.';
@@ -260,13 +265,15 @@ export const HomeworkCreatePage: React.FC = () => {
 
   const handleDeleteAssignment = async () => {
     if (!existingAssignment || isSaving) return;
-    if (window.confirm(`Xóa vĩnh viễn bài tập "${existingAssignment.title}"?`)) {
-      setIsSaving(true);
-      await HomeworkStorageService.deleteAssignmentAsync(existingAssignment.id);
-      setIsSaving(false);
-      showToast({ message: 'Đã xóa bài tập', type: 'success' });
-      navigate('/admin');
-    }
+    setIsSaving(true);
+    const { synced } = await HomeworkStorageService.deleteAssignmentAsync(existingAssignment.id);
+    setIsSaving(false);
+    showToast({
+      message: `Đã xóa bài tập "${existingAssignment.title}"`,
+      subMessage: synced ? 'Đã đồng bộ xóa lên máy chủ' : undefined,
+      type: 'success',
+    });
+    navigate('/admin');
   };
 
   const handleSave = async () => {
@@ -798,48 +805,67 @@ Break down :: Hỏng hóc`}</pre>
                 />
               </div>
 
-              {(q.type === 'MULTIPLE_CHOICE' || q.type === 'PRONUNCIATION') && q.options && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {q.options.map((opt, oIdx) => {
-                    const isCorrect = q.correctOptionIndex === oIdx;
-                    return (
-                      <div
-                        key={oIdx}
-                        className={`flex items-center gap-2 p-2.5 rounded-xl border ${
-                          isCorrect
-                            ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-400'
-                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateQuestion(idx, (cur) => ({ ...cur, correctOptionIndex: oIdx }))
-                          }
-                          className={`w-7 h-7 rounded-lg font-extrabold text-xs flex items-center justify-center shrink-0 ${
+              {(q.type === 'MULTIPLE_CHOICE' || q.type === 'PRONUNCIATION' || q.type === 'MULTI_SELECT') && q.options && (
+                <div className="space-y-2">
+                  {q.type === 'MULTI_SELECT' && (
+                    <p className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                      Nhấn vào chữ cái A/B/C/D để bật/tắt nhiều đáp án đúng:
+                    </p>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {q.options.map((opt, oIdx) => {
+                      const isCorrect =
+                        q.type === 'MULTI_SELECT'
+                          ? (q.correctOptionIndices || []).includes(oIdx)
+                          : q.correctOptionIndex === oIdx;
+                      return (
+                        <div
+                          key={oIdx}
+                          className={`flex items-center gap-2 p-2.5 rounded-xl border ${
                             isCorrect
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-400'
+                              : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                           }`}
                         >
-                          {String.fromCharCode(65 + oIdx)}
-                        </button>
-                        <input
-                          type="text"
-                          placeholder={`Đáp án ${String.fromCharCode(65 + oIdx)}`}
-                          value={opt}
-                          onChange={(e) =>
-                            updateQuestion(idx, (cur) => {
-                              const opts = [...(cur.options || [])];
-                              opts[oIdx] = e.target.value;
-                              return { ...cur, options: opts };
-                            })
-                          }
-                          className="w-full bg-transparent text-base sm:text-xs font-semibold focus:outline-none"
-                        />
-                      </div>
-                    );
-                  })}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateQuestion(idx, (cur) => {
+                                if (cur.type === 'MULTI_SELECT') {
+                                  const curList = cur.correctOptionIndices || [];
+                                  const nextList = curList.includes(oIdx)
+                                    ? curList.filter((x) => x !== oIdx)
+                                    : [...curList, oIdx].sort((a, b) => a - b);
+                                  return { ...cur, correctOptionIndices: nextList };
+                                }
+                                return { ...cur, correctOptionIndex: oIdx };
+                              })
+                            }
+                            className={`w-7 h-7 rounded-lg font-extrabold text-xs flex items-center justify-center shrink-0 ${
+                              isCorrect
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
+                            }`}
+                          >
+                            {String.fromCharCode(65 + oIdx)}
+                          </button>
+                          <input
+                            type="text"
+                            placeholder={`Đáp án ${String.fromCharCode(65 + oIdx)}`}
+                            value={opt}
+                            onChange={(e) =>
+                              updateQuestion(idx, (cur) => {
+                                const opts = [...(cur.options || [])];
+                                opts[oIdx] = e.target.value;
+                                return { ...cur, options: opts };
+                              })
+                            }
+                            className="w-full bg-transparent text-base sm:text-xs font-semibold focus:outline-none"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

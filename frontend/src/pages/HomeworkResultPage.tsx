@@ -240,6 +240,34 @@ export const HomeworkResultPage: React.FC = () => {
                 </div>
               )}
 
+              {q.type === 'MULTI_SELECT' && q.options && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {q.options.map((opt, oIdx) => {
+                    const isCorrect = (q.correctOptionIndices || []).includes(oIdx);
+                    const isChosen = Array.isArray(studentAns) && studentAns.includes(oIdx);
+                    return (
+                      <div
+                        key={oIdx}
+                        className={`p-3 rounded-xl border flex items-center justify-between gap-2 text-xs sm:text-sm ${
+                          isCorrect
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-950 dark:text-emerald-100 font-bold'
+                            : isChosen
+                            ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-500 text-rose-950 dark:text-rose-200 line-through'
+                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <span>
+                          <strong className="mr-1.5">{String.fromCharCode(65 + oIdx)}.</strong>
+                          {opt}
+                        </span>
+                        {isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+                        {isChosen && !isCorrect && <XCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {q.type === 'FILL_BLANK' && (
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 text-xs sm:text-sm space-y-1">
                   <p>

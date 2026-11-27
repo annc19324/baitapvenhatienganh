@@ -127,12 +127,14 @@ export const HomeworkHubPage: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleAdminDelete = (assign: HomeworkAssignment) => {
-    if (window.confirm(`Xóa bài tập "${assign.title}"?`)) {
-      HomeworkStorageService.deleteAssignment(assign.id);
-      setAssignments(HomeworkStorageService.getAssignments());
-      showToast({ message: 'Đã xóa bài tập', type: 'success' });
-    }
+  const handleAdminDelete = async (assign: HomeworkAssignment) => {
+    const { synced } = await HomeworkStorageService.deleteAssignmentAsync(assign.id);
+    setAssignments(HomeworkStorageService.getAssignments());
+    showToast({
+      message: `Đã xóa bài tập "${assign.title}"`,
+      subMessage: synced ? 'Đã đồng bộ xóa lên máy chủ' : 'Đã xóa trên máy',
+      type: 'success',
+    });
   };
 
   const filteredAssignments = useMemo(() => {

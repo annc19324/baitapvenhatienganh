@@ -26,6 +26,9 @@ import { TheoryModal } from '../components/TheoryModal';
 
 const isQuestionAnswered = (q: HomeworkQuestion, ans: any): boolean => {
   if (ans === undefined || ans === null || ans === '') return false;
+  if (q.type === 'MULTI_SELECT') {
+    return Array.isArray(ans) && ans.length > 0;
+  }
   if (q.type === 'MATCHING') {
     return typeof ans === 'object' && Object.values(ans).some((v) => Boolean(v));
   }
@@ -57,7 +60,6 @@ export const HomeworkDoPage: React.FC = () => {
   const [timeLeftSeconds, setTimeLeftSeconds] = useState<number | null>(null);
   const [startTime, setStartTime] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
     if (!codeOrId) return;
@@ -166,7 +168,6 @@ export const HomeworkDoPage: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!assignment || isSubmitting) return;
-    setShowConfirmModal(false);
     setMobilePaletteOpen(false);
     setIsSubmitting(true);
 
@@ -181,6 +182,14 @@ export const HomeworkDoPage: React.FC = () => {
 
         if (q.type === 'MULTIPLE_CHOICE' || q.type === 'PRONUNCIATION') {
           scores[q.id] = studentAns !== undefined && studentAns === q.correctOptionIndex ? maxPoints : 0;
+        } else if (q.type === 'MULTI_SELECT') {
+          const expected = [...(q.correctOptionIndices || [])].sort((a, b) => a - b);
+          const given = Array.isArray(studentAns) ? [...studentAns].sort((a, b) => a - b) : [];
+          const isExact =
+            expected.length > 0 &&
+            expected.length === given.length &&
+            expected.every((val, i) => val === given[i]);
+          scores[q.id] = isExact ? maxPoints : 0;
         } else if (q.type === 'FILL_BLANK') {
           const accepted = (q.acceptedAnswers || []).map((a) => a.trim().toLowerCase());
           const textAns = (typeof studentAns === 'string' ? studentAns : '').trim().toLowerCase();
@@ -457,14 +466,15 @@ export const HomeworkDoPage: React.FC = () => {
 
       <button
         type="button"
+        disabled={isSubmitting}
         onClick={() => {
           setMobilePaletteOpen(false);
-          setShowConfirmModal(true);
+          handleSubmit();
         }}
-        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm rounded-2xl shadow-glow-emerald transition flex items-center justify-center gap-2"
+        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-extrabold text-sm rounded-2xl shadow-glow-emerald transition flex items-center justify-center gap-2"
       >
         <Send className="w-4 h-4" />
-        <span>Nộp Bài</span>
+        <span>{isSubmitting ? 'Đang chấm...' : 'Nộp Bài'}</span>
       </button>
     </div>
   );
@@ -499,11 +509,12 @@ export const HomeworkDoPage: React.FC = () => {
 
             <button
               type="button"
-              onClick={() => setShowConfirmModal(true)}
-              className="hidden sm:inline-flex px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-sm items-center gap-1.5 transition"
+              disabled={isSubmitting}
+              onClick={handleSubmit}
+              className="hidden sm:inline-flex px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-extrabold text-xs rounded-xl shadow-sm items-center gap-1.5 transition"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Nộp Bài</span>
+              <span>{isSubmitting ? 'Đang chấm...' : 'Nộp Bài'}</span>
             </button>
           </div>
         </div>
@@ -557,6 +568,50 @@ export const HomeworkDoPage: React.FC = () => {
                         }`}
                       >
                         {String.fromCharCode(65 + optIdx)}
+                      </span>
+                      <span className="text-sm sm:text-[15px] leading-relaxed">{option}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* MULTI_SELECT */}
+            {currentQ.type === 'MULTI_SELECT' && currentQ.options && (
+              <div className="space-y-2.5">
+                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                  Có thể chọn nhiều đáp án đúng:
+                </p>
+                {currentQ.options.map((option, optIdx) => {
+                  const selectedList: number[] = Array.isArray(answers[currentQ.id]) ? answers[currentQ.id] : [];
+                  const isSelected = selectedList.includes(optIdx);
+                  return (
+                    <button
+                      key={optIdx}
+                      type="button"
+                      onClick={() =>
+                        setAnswers((prev) => {
+                          const cur: number[] = Array.isArray(prev[currentQ.id]) ? prev[currentQ.id] : [];
+                          const next = cur.includes(optIdx)
+                            ? cur.filter((x) => x !== optIdx)
+                            : [...cur, optIdx].sort((a, b) => a - b);
+                          return { ...prev, [currentQ.id]: next };
+                        })
+                      }
+                      className={`w-full min-h-[54px] p-3.5 sm:p-4 rounded-2xl border text-left flex items-center gap-3.5 transition active:scale-[0.99] ${
+                        isSelected
+                          ? 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-600 text-indigo-950 dark:text-indigo-100 font-bold ring-2 ring-indigo-500/20'
+                          : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-indigo-300 text-slate-800 dark:text-slate-200 font-semibold'
+                      }`}
+                    >
+                      <span
+                        className={`w-8 h-8 rounded-xl font-extrabold text-xs flex items-center justify-center shrink-0 ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'
+                        }`}
+                      >
+                        {isSelected ? '✓' : String.fromCharCode(65 + optIdx)}
                       </span>
                       <span className="text-sm sm:text-[15px] leading-relaxed">{option}</span>
                     </button>
@@ -863,11 +918,12 @@ export const HomeworkDoPage: React.FC = () => {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setShowConfirmModal(true)}
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-glow-emerald flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  onClick={handleSubmit}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-xl text-xs font-extrabold shadow-glow-emerald flex items-center gap-1.5"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Nộp Bài</span>
+                  <span>{isSubmitting ? 'Đang chấm...' : 'Nộp Bài'}</span>
                 </button>
               )}
             </div>
@@ -924,11 +980,12 @@ export const HomeworkDoPage: React.FC = () => {
           ) : (
             <button
               type="button"
-              onClick={() => setShowConfirmModal(true)}
-              className="px-4 py-3 rounded-xl bg-emerald-600 text-white font-extrabold text-xs flex items-center gap-1"
+              disabled={isSubmitting}
+              onClick={handleSubmit}
+              className="px-4 py-3 rounded-xl bg-emerald-600 disabled:opacity-60 text-white font-extrabold text-xs flex items-center gap-1"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Nộp</span>
+              <span>{isSubmitting ? '...' : 'Nộp'}</span>
             </button>
           )}
         </div>
@@ -958,52 +1015,6 @@ export const HomeworkDoPage: React.FC = () => {
               </button>
             </div>
             {renderPaletteGrid(() => setMobilePaletteOpen(false))}
-          </div>
-        </div>
-      )}
-
-      {/* Confirm Submit Modal */}
-      {showConfirmModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => !isSubmitting && setShowConfirmModal(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-6 max-w-sm w-full space-y-4 shadow-elevated text-center animate-sheet-up sm:animate-slide-up pb-safe"
-          >
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">Nộp bài tập?</h3>
-              <p className="text-sm text-slate-500">
-                Bạn đã làm <strong>{answeredCount}/{totalQ}</strong> câu hỏi.
-                {totalQ - answeredCount > 0 && (
-                  <span className="block text-rose-500 font-bold mt-1">
-                    Còn {totalQ - answeredCount} câu chưa trả lời.
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="flex gap-2.5 pt-1">
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => setShowConfirmModal(false)}
-                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl"
-              >
-                Làm tiếp
-              </button>
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleSubmit}
-                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-glow-emerald"
-              >
-                {isSubmitting ? 'Đang chấm...' : 'Nộp Bài'}
-              </button>
-            </div>
           </div>
         </div>
       )}
